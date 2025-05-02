@@ -112,7 +112,7 @@ if st.button("Start Scraping", disabled=st.session_state.is_running):
     
 # Display status
 if st.session_state.is_running:
-    st.info("I'm scraping in progress...")
+    st.info("Scraping in progress...")
 elif st.session_state.results:
     if st.session_state.results.startswith("Error"):
         st.error(f"{st.session_state.results} (Last run: {st.session_state.last_run})")
