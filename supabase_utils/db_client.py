@@ -1,17 +1,35 @@
-def scrape_postcodes():
-    """I ensure the country and region exist, then insert a sample postcode."""
-    print("\n--- Starting my Postcode")
+import os
+import sys # Import sys module
+import traceback # Keep for error handling if needed
+from typing import Dict, Any, Optional
+# import pandas as pd # Removed as it seems unused
 
 # Add parent directory to path to find config
+# Do this BEFORE trying to import from the parent directory
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Third-party imports
 try:
     from supabase import create_client, Client
-    from postgrest import APIError
+    # Use the exceptions path consistently
+    from postgrest.exceptions import APIError
+except ImportError as e:
+    print(f"Error importing Supabase modules: {e}")
+    print("Make sure 'supabase-py' is installed (`pip install supabase`).")
+    sys.exit(1)
+
+# Local imports (config)
+try:
     from config import SUPABASE_URL, SUPABASE_KEY
 except ImportError as e:
-    print(f"Error importing required modules: {e}")
-    print("Make sure 'supabase-py' is installed (`pip install supabase`) and config.py exists.")
+    # Fallback to environment variables if config.py is missing
+    print(f"Warning: Could not import from config.py ({e}). Attempting to use environment variables SUPABASE_URL and SUPABASE_KEY.")
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+# Validate Supabase credentials
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("Error: Supabase URL and Key must be set in config.py or environment variables.")
     sys.exit(1)
 
 # Initialize Supabase Client
@@ -72,25 +90,7 @@ def get_id_by_column(table_name: str, column_name: str, column_value: Any, **kwa
         print(f"An unexpected error occurred while getting ID from '{table_name}': {e}")
         return None
 
-# supabase_utils/db_client.py (Assuming this is where the function resides)
-from supabase import Client, create_client
-from postgrest.exceptions import APIError
-from typing import Dict, Any, Optional
-import os
-
-# Assuming you have config.py or environment variables for SupABASE_URL and SUPABASE_KEY
-# If not, you might need to import them or pass the client instance
-try:
-    from config import SUPABASE_URL, SUPABASE_KEY
-except ImportError:
-    SUPABASE_URL = os.environ.get("SUPABASE_URL")
-    SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Supabase URL and Key must be set in config.py or environment variables.")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
+# --- Removed duplicate imports and client initialization ---
 # --- Other functions like insert_and_get_id, get_id_by_column would be here ---
 
 def insert_postcode_data(data: Dict[str, Any]) -> bool:
@@ -100,7 +100,10 @@ def insert_postcode_data(data: Dict[str, Any]) -> bool:
     """
     print(f"Attempting to insert postcode: {data}")
     try:
-        # Use regular insert instead of upsert since we don't have a unique constraint
+        # Note: If the 'code' column has a UNIQUE constraint and you want to
+        # UPDATE existing entries instead of skipping, use the .upsert() method:
+        # supabase.table("postcodes").upsert(data, on_conflict='code').execute()
+
         response = supabase.table("postcodes").insert(data).execute()
         
         if hasattr(response, 'data') and response.data:
@@ -126,7 +129,6 @@ def insert_postcode_data(data: Dict[str, Any]) -> bool:
             print(f"Error Code: {e.code}, Message: {e.message}, Details: {e.details}, Hint: {e.hint}")
             return False
     except Exception as e:
-        print(f"An unexpected error occurred during postcode insert: {e}")
         import traceback
         print(traceback.format_exc())
         return False
@@ -165,7 +167,7 @@ def get_all_postcodes():
         print(f"Error retrieving postcodes: {e}")
         return []
 
-# --- Main Scraping Logic ---
+# --- Example Usage / Test Script ---
 def scrape_postcodes():
     """Ensures country and region exist, then inserts a sample postcode."""
     print("\n--- Starting Postcode Scraping Process ---")
