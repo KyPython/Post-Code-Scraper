@@ -1,6 +1,6 @@
-import sys
-import os
-from typing import Dict, Any, Optional
+def scrape_postcodes():
+    """I ensure the country and region exist, then insert a sample postcode."""
+    print("\n--- Starting my Postcode")
 
 # Add parent directory to path to find config
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

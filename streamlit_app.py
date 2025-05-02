@@ -51,7 +51,7 @@ st.write("Click the button below to start the scraping process. This may take a 
 
 st.header("Full Demo Video")
 st.write("Watch a demonstration of the application with real database integration:")
-st.video("https://youtu.be/your-demo-video-id")  # Replace with your actual video URL
+st.video("https://youtu.be/your-demo-video-id") 
 
 # Store scraping status in session state
 if 'is_running' not in st.session_state:
