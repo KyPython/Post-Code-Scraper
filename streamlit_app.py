@@ -3,62 +3,36 @@ import time
 import threading
 import sys
 import os
+import io
+import pandas as pd
 from pathlib import Path
+
+# Add the current directory to the path so we can import our modules
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Import the scraper module
+try:
+    from scraper.geonames_scraper import scrape_connecticut_postcodes
+    from supabase_utils.db_client import get_all_postcodes
+    SCRAPER_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import scraper modules: {e}")
+    SCRAPER_AVAILABLE = False
 
 # Debug: Initializing Streamlit app
 print("[DEBUG] Starting execution...")
 
 # App title
-st.title("Postcode Scraper Demo")
-st.write("App is running!")
+st.title("Postcode Scraper")
+st.write("Real-time web scraping demonstration")
 
 # Add a visual indicator
 st.success("✅ App loaded successfully")
 
 # About section
-st.header("About This Demo")
+st.header("About This App")
 st.write("This application demonstrates web scraping capabilities by extracting postal codes from the United States.")
 st.write("Select a state and optionally filter by city to scrape postal codes.")
-
-# Mock data for the demo
-MOCK_POSTCODES = {
-    "Connecticut": [
-        {"id": 1, "code": "06001", "place_name": "Avon", "region_id": 1},
-        {"id": 2, "code": "06002", "place_name": "Bloomfield", "region_id": 1},
-        {"id": 3, "code": "06010", "place_name": "Bristol", "region_id": 1},
-        {"id": 4, "code": "06013", "place_name": "Burlington", "region_id": 1},
-        {"id": 5, "code": "06016", "place_name": "East Windsor", "region_id": 1},
-        {"id": 6, "code": "06019", "place_name": "Canton", "region_id": 1},
-        {"id": 7, "code": "06023", "place_name": "Glastonbury", "region_id": 1},
-        {"id": 8, "code": "06029", "place_name": "Ellington", "region_id": 1},
-        {"id": 9, "code": "06032", "place_name": "Farmington", "region_id": 1},
-        {"id": 10, "code": "06033", "place_name": "Glastonbury", "region_id": 1}
-    ],
-    "New York": [
-        {"id": 11, "code": "10001", "place_name": "Manhattan", "region_id": 2},
-        {"id": 12, "code": "10002", "place_name": "Manhattan", "region_id": 2},
-        {"id": 13, "code": "10003", "place_name": "Manhattan", "region_id": 2},
-        {"id": 14, "code": "11201", "place_name": "Brooklyn", "region_id": 2},
-        {"id": 15, "code": "11211", "place_name": "Brooklyn", "region_id": 2},
-        {"id": 16, "code": "11215", "place_name": "Brooklyn", "region_id": 2},
-        {"id": 17, "code": "11222", "place_name": "Brooklyn", "region_id": 2},
-        {"id": 18, "code": "11101", "place_name": "Queens", "region_id": 2},
-        {"id": 19, "code": "10451", "place_name": "Bronx", "region_id": 2},
-        {"id": 20, "code": "10301", "place_name": "Staten Island", "region_id": 2}
-    ],
-    "California": [
-        {"id": 21, "code": "90001", "place_name": "Los Angeles", "region_id": 3},
-        {"id": 22, "code": "90210", "place_name": "Beverly Hills", "region_id": 3},
-        {"id": 23, "code": "94016", "place_name": "San Francisco", "region_id": 3},
-        {"id": 24, "code": "95014", "place_name": "Cupertino", "region_id": 3},
-        {"id": 25, "code": "92093", "place_name": "San Diego", "region_id": 3},
-        {"id": 26, "code": "94025", "place_name": "Menlo Park", "region_id": 3},
-        {"id": 27, "code": "94043", "place_name": "Mountain View", "region_id": 3},
-        {"id": 28, "code": "94085", "place_name": "Sunnyvale", "region_id": 3},
-        {"id": 29, "code": "95054", "place_name": "Santa Clara", "region_id": 3},
-        {"id": 30, "code": "94301", "place_name": "Palo Alto", "region_id": 3}
-    ]
-}
 
 # List of US states for the dropdown
 US_STATES = [
@@ -99,6 +73,8 @@ if 'scraped_data' not in st.session_state:
     st.session_state.scraped_data = None
 if 'scraping_complete' not in st.session_state:
     st.session_state.scraping_complete = False
+if 'log_messages' not in st.session_state:
+    st.session_state.log_messages = []
 
 # Scraper section
 st.header("Run Scraper")
@@ -108,13 +84,104 @@ st.write("Click the button below to start the scraping process. This may take a 
 if 'progress_placeholder' not in st.session_state:
     st.session_state.progress_placeholder = st.empty()
 
-# Mock scraper function that doesn't rely on external modules
-def mock_scrape_postcodes(state, city_filter=""):
-    """Simulate scraping postcodes for the selected state and city"""
-    print(f"Simulating scraping process for {state}...")
+# Log container
+log_container = st.empty()
+
+# Function to add log messages
+def add_log(message):
+    st.session_state.log_messages.append(f"{time.strftime('%H:%M:%S')} - {message}")
+    # Display logs in the UI
+    log_container.code('\n'.join(st.session_state.log_messages))
+
+# Capture stdout to display in the UI
+class StreamlitCapture:
+    def __init__(self):
+        self.old_stdout = sys.stdout
+        self.string_io = io.StringIO()
+        
+    def write(self, text):
+        self.old_stdout.write(text)
+        if text.strip():  # Only add non-empty lines
+            add_log(text.strip())
+            
+    def flush(self):
+        self.old_stdout.flush()
+
+# Real scraper function that uses our existing scraper
+def real_scrape_postcodes(state, city_filter=""):
+    """Scrape postcodes for the selected state and city using our scraper module"""
     
     # Create a progress bar
     progress_bar = st.session_state.progress_placeholder.progress(0)
+    
+    # Currently only Connecticut is fully implemented
+    if state.lower() != "connecticut":
+        add_log(f"Warning: Full scraping for {state} is not yet implemented.")
+        add_log(f"Defaulting to Connecticut for demonstration purposes.")
+        state = "Connecticut"
+    
+    add_log(f"Starting scraping process for {state}...")
+    
+    # Capture stdout to show in the UI
+    stdout_capture = StreamlitCapture()
+    old_stdout = sys.stdout
+    sys.stdout = stdout_capture
+    
+    try:
+        # Run the scraper with the city filter
+        scrape_connecticut_postcodes(city_filter=city_filter)
+        
+        # Get the results from the database
+        add_log("Retrieving results from database...")
+        results = get_all_postcodes()
+        
+        # Filter results by city if needed
+        if city_filter and len(city_filter) > 0:
+            filtered_results = [
+                postcode for postcode in results 
+                if city_filter.lower() in postcode.get('place_name', '').lower()
+            ]
+            add_log(f"Filtered {len(results) - len(filtered_results)} postcodes that didn't match '{city_filter}'")
+            results = filtered_results
+        
+        # Complete the progress bar
+        progress_bar.progress(100)
+        
+        add_log(f"Completed scraping for {state}. Found {len(results)} postcodes.")
+        return results
+        
+    except Exception as e:
+        import traceback
+        add_log(f"Error during scraping: {str(e)}")
+        add_log(traceback.format_exc())
+        return []
+    finally:
+        # Restore stdout
+        sys.stdout = old_stdout
+
+# Fallback to mock data if the scraper is not available
+def mock_scrape_postcodes(state, city_filter=""):
+    """Simulate scraping postcodes for the selected state and city"""
+    add_log(f"Using mock data for {state}...")
+    
+    # Create a progress bar
+    progress_bar = st.session_state.progress_placeholder.progress(0)
+    
+    # Mock data for demonstration
+    MOCK_POSTCODES = {
+        "Connecticut": [
+            {"id": 1, "code": "06001", "place_name": "Avon", "region_id": 1},
+            {"id": 2, "code": "06002", "place_name": "Bloomfield", "region_id": 1},
+            {"id": 3, "code": "06010", "place_name": "Bristol", "region_id": 1},
+            # ... more mock data
+        ],
+        "New York": [
+            {"id": 11, "code": "10001", "place_name": "Manhattan", "region_id": 2},
+            {"id": 12, "code": "10002", "place_name": "Manhattan", "region_id": 2},
+            # ... more mock data
+        ],
+        # ... more states
+    }
     
     # Get mock data for the selected state or use empty list if not available
     state_data = MOCK_POSTCODES.get(state, [])
@@ -125,13 +192,14 @@ def mock_scrape_postcodes(state, city_filter=""):
             postcode for postcode in state_data 
             if city_filter.lower() in postcode['place_name'].lower()
         ]
+        add_log(f"Filtered to {len(filtered_data)} postcodes matching '{city_filter}'")
     else:
         filtered_data = state_data
     
     # Simulate processing with progress updates
     total_items = len(filtered_data)
     for i, postcode in enumerate(filtered_data):
-        print(f"Processing {postcode['place_name']} - {postcode['code']}")
+        add_log(f"Processing {postcode['place_name']} - {postcode['code']}")
         time.sleep(0.3)  # Simulate processing time
         
         # Update progress bar
@@ -142,20 +210,26 @@ def mock_scrape_postcodes(state, city_filter=""):
     progress_bar.progress(100)
     time.sleep(0.5)  # Pause briefly at 100%
     
-    print(f"Completed scraping simulation for {state}.")
+    add_log(f"Completed mock scraping for {state}.")
     return filtered_data
 
 def run_scraper():
     try:
-        # Reset the completion flag
+        # Reset the completion flag and logs
         st.session_state.scraping_complete = False
+        st.session_state.log_messages = []
         
         # Store the state and city filter when the scraper runs
         state = st.session_state.selected_state
         city = st.session_state.city_filter
         
-        # Run the mock scraper
-        results = mock_scrape_postcodes(state, city)
+        # Run the appropriate scraper
+        if SCRAPER_AVAILABLE and state.lower() == "connecticut":
+            add_log("Using real scraper...")
+            results = real_scrape_postcodes(state, city)
+        else:
+            add_log("Using mock scraper (real scraper not available)...")
+            results = mock_scrape_postcodes(state, city)
         
         # Store the results
         st.session_state.scraped_data = results
@@ -195,9 +269,12 @@ if st.button("Start Scraping", disabled=st.session_state.is_running):
     
     st.success(f"Started scraping postcodes for {selected_state}...")
     
-# Display status
+# Display status and logs
 if st.session_state.is_running:
-    st.info("Scraping in progress...")
+    st.info("Scraping in progress... See the log below for details.")
+    # Show the log container if it's not already visible
+    if not st.session_state.log_messages:
+        log_container.code("Initializing scraper...")
 elif st.session_state.results:
     if st.session_state.results.startswith("Error"):
         st.error(f"{st.session_state.results} (Last run: {st.session_state.last_run})")
@@ -231,7 +308,6 @@ st.header("View Full Dataset")
 # Show the scraped data if available
 if st.session_state.scraped_data is not None and len(st.session_state.scraped_data) > 0:
     # Add a download button
-    import pandas as pd
     df = pd.DataFrame(st.session_state.scraped_data)
     csv = df.to_csv(index=False)
     
@@ -249,33 +325,48 @@ elif st.session_state.last_run is not None:
 else:
     st.info("Run the scraper to see results here.")
 
-# Request full access section
-st.header("Request Full Access")
+# How it works section
+st.header("How It Works")
 st.write("""
-This is a demo version with mock data. To request access to the full version with real database integration:
+This application demonstrates real web scraping in action:
 
-1. Contact the developer at [your-email@example.com](mailto:your-email@example.com)
-2. Provide your use case and credentials
-3. We'll set up a secure access method for you
+1. **Data Source**: The app connects to geonames.org to fetch postal code data
+2. **Scraping Process**: For the selected state, the app:
+   - Navigates to the state's postal code page
+   - Extracts postal codes using HTML parsing
+   - Organizes the data into a structured format
+3. **Real-time Logging**: Watch the scraping process happen in real-time
+4. **Results**: View and download the scraped data
+
+The entire process is transparent, showing you exactly how web scraping works.
 """)
 
-with st.expander("Why is access restricted?"):
+# Ethical considerations
+with st.expander("Ethical Web Scraping Considerations"):
     st.write("""
-    Database access is restricted to prevent:
+    When scraping websites, always consider these ethical guidelines:
     
-    - Unauthorized data access
-    - Potential misuse of the scraping functionality
-    - Excessive database operations
+    - **Respect robots.txt**: Check if scraping is allowed
+    - **Rate limiting**: Don't overwhelm servers with too many requests
+    - **Data usage**: Only use the data for legitimate purposes
+    - **Terms of Service**: Ensure you're not violating the website's terms
+    - **Personal data**: Be careful with personally identifiable information
     
-    This is standard practice for applications that connect to production databases.
+    This demo implements rate limiting and only collects public postal code data.
     """)
 
 st.sidebar.markdown("""
-## Source Code
-View the complete source code on GitHub:
-[GitHub Repository](https://github.com/KyPython/Post-Code-Scraper)
+## About This Project
+This web scraping demonstration shows how to:
 
-The repository includes all database integration code.
+- Extract data from websites
+- Process HTML content
+- Structure data for analysis
+- Store data in a database
+- Provide real-time feedback
+
+The code is available on GitHub:
+[GitHub Repository](https://github.com/KyPython/Post-Code-Scraper)
 """)
 
 # Add a section to show environment information for debugging
@@ -284,3 +375,4 @@ with st.expander("Environment Information"):
     st.write(f"Current directory: {os.getcwd()}")
     st.write(f"Files in current directory: {os.listdir('.')}")
     st.write(f"sys.path: {sys.path}")
+    st.write(f"Scraper available: {SCRAPER_AVAILABLE}")
