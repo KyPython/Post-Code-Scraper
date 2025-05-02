@@ -4,6 +4,9 @@ import threading
 import sys
 from pathlib import Path
 
+# Debug print to console
+print("Starting Streamlit app...")
+
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -12,6 +15,10 @@ from supabase_utils.db_client import get_all_postcodes
 
 # App title
 st.title("Postcode Scraper Demo")
+st.write("App is running!")
+
+# Add a visual indicator
+st.success("✅ App loaded successfully")
 
 # About section
 st.header("About This Demo")
