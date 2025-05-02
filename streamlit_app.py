@@ -25,9 +25,33 @@ st.header("About This Demo")
 st.write("This application demonstrates web scraping capabilities by extracting postal codes from Connecticut, USA.")
 st.write("The data is stored in a Supabase database and can be viewed below.")
 
+st.header("Request Full Access")
+st.write("""
+This is a demo version with mock data. To request access to the full version with real database integration:
+
+1. Contact the developer at [your-email@example.com](mailto:your-email@example.com)
+2. Provide your use case and credentials
+3. We'll set up a secure access method for you
+""")
+
+with st.expander("Why is access restricted?"):
+    st.write("""
+    Database access is restricted to prevent:
+    
+    - Unauthorized data access
+    - Potential misuse of the scraping functionality
+    - Excessive database operations
+    
+    This is standard practice for applications that connect to production databases.
+    """)
+
 # Scraper section
 st.header("Run Scraper")
 st.write("Click the button below to start the scraping process. This may take a minute or two.")
+
+st.header("Full Demo Video")
+st.write("Watch a demonstration of the application with real database integration:")
+st.video("https://youtu.be/your-demo-video-id")  # Replace with your actual video URL
 
 # Store scraping status in session state
 if 'is_running' not in st.session_state:
@@ -36,6 +60,14 @@ if 'last_run' not in st.session_state:
     st.session_state.last_run = None
 if 'results' not in st.session_state:
     st.session_state.results = None
+
+st.sidebar.markdown("""
+## Source Code
+View the complete source code on GitHub:
+[GitHub Repository](https://github.com/KyPython/Post-Code-Scraper)
+
+The repository includes all database integration code.
+""")
 
 def run_scraper():
     try:
