@@ -10,15 +10,15 @@ print("[DEBUG] Starting execution...")
 
 # App title
 st.title("Postcode Scraper Demo")
-st.write("App is running!")
+st.write("I'm running!")
 
 # Add a visual indicator
-st.success("✅ App loaded successfully")
+st.success("✅ I've loaded successfully")
 
 # About section
 st.header("About This Demo")
-st.write("This application demonstrates web scraping capabilities by extracting postal codes from Connecticut, USA.")
-st.write("The data is stored in a Supabase database and can be viewed below.")
+st.write("I demonstrate web scraping capabilities by extracting postal codes from Connecticut, USA.")
+st.write("The data I use is stored in a Supabase database and can be viewed below.")
 
 # Mock data for the demo
 MOCK_POSTCODES = [
@@ -31,19 +31,19 @@ MOCK_POSTCODES = [
 
 st.header("Request Full Access")
 st.write("""
-This is a demo version with mock data. To request access to the full version with real database integration:
+This is a demo version with mock data. If you'd like access to the full version with real database integration:
 
-1. Contact the developer at [your-email@example.com](mailto:your-email@example.com)
-2. Provide your use case and credentials
-3. We'll set up a secure access method for you
+1. Contact me at [kyjahntsmith@gmail.com](mailto:kyjahntsmith@gmail.com)
+2. Share your use case and credentials
+3. I'll set up a secure access method for you
 """)
 
 with st.expander("Why is access restricted?"):
     st.write("""
-    Database access is restricted to prevent:
+    I restrict database access to prevent:
     
     - Unauthorized data access
-    - Potential misuse of the scraping functionality
+    - Potential misuse of my scraping functionality
     - Excessive database operations
     
     This is standard practice for applications that connect to production databases.
@@ -51,10 +51,10 @@ with st.expander("Why is access restricted?"):
 
 # Scraper section
 st.header("Run Scraper")
-st.write("Click the button below to start the scraping process. This may take a minute or two.")
+st.write("Click the button below to start my scraping process. This may take a minute or two.")
 
 st.header("Full Demo Video")
-st.write("Watch a demonstration of the application with real database integration:")
+st.write("Watch a demonstration of me in action with real database integration:")
 st.video("https://youtu.be/your-demo-video-id")
 
 # Store scraping status in session state
@@ -67,10 +67,10 @@ if 'results' not in st.session_state:
 
 st.sidebar.markdown("""
 ## Source Code
-View the complete source code on GitHub:
+You can view my complete source code on GitHub:
 [GitHub Repository](https://github.com/KyPython/Post-Code-Scraper)
 
-The repository includes all database integration code.
+The repository includes all my database integration code.
 """)
 
 # Mock scraper function that doesn't rely on external modules
@@ -91,7 +91,7 @@ def run_scraper():
     try:
         # Run the mock scraper
         mock_scrape_connecticut_postcodes()
-        st.session_state.results = "Scrape completed successfully"
+        st.session_state.results = "I completed the scrape successfully"
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -108,11 +108,11 @@ if st.button("Start Scraping", disabled=st.session_state.is_running):
     thread.daemon = True
     thread.start()
     
-    st.success("Scrape started!")
+    st.success("I've started scraping!")
     
 # Display status
 if st.session_state.is_running:
-    st.info("Scraping in progress...")
+    st.info("I'm scraping in progress...")
 elif st.session_state.results:
     if st.session_state.results.startswith("Error"):
         st.error(f"{st.session_state.results} (Last run: {st.session_state.last_run})")
@@ -127,11 +127,11 @@ if st.button("Load Data"):
     if postcodes and len(postcodes) > 0:
         st.dataframe(postcodes)
     else:
-        st.info("No data available")
+        st.info("I don't have any data available")
 
 # Add a section to show environment information for debugging
 with st.expander("Environment Information"):
-    st.write(f"Python version: {sys.version}")
-    st.write(f"Current directory: {os.getcwd()}")
-    st.write(f"Files in current directory: {os.listdir('.')}")
-    st.write(f"sys.path: {sys.path}")
+    st.write(f"My Python version: {sys.version}")
+    st.write(f"My current directory: {os.getcwd()}")
+    st.write(f"Files in my current directory: {os.listdir('.')}")
+    st.write(f"My sys.path: {sys.path}")
