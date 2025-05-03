@@ -32,13 +32,39 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     print("Error: Supabase URL and Key must be set in config.py or environment variables.")
     sys.exit(1)
 
-# Initialize Supabase Client
-try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("Supabase client initialized.")
-except Exception as e:
-    print(f"Error initializing Supabase client: {e}")
-    sys.exit(1)
+def initialize_supabase_client():
+    """
+    Initialize Supabase client with version compatibility handling.
+    Returns the initialized client or exits on failure.
+    """
+    try:
+        # First try the standard initialization
+        client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Supabase client initialized successfully.")
+        return client
+    except TypeError as e:
+        if "unexpected keyword argument 'proxy'" in str(e):
+            print("Detected older Supabase client version, trying alternative initialization...")
+            try:
+                # For older versions that don't support proxy
+                import importlib
+                supabase_module = importlib.import_module('supabase')
+                client_class = getattr(supabase_module, 'Client')
+                client = client_class(SUPABASE_URL, SUPABASE_KEY)
+                print("Supabase client initialized with alternative method.")
+                return client
+            except Exception as alt_e:
+                print(f"Alternative initialization failed: {alt_e}")
+                sys.exit(1)
+        else:
+            print(f"TypeError initializing Supabase client: {e}")
+            sys.exit(1)
+    except Exception as e:
+        print(f"Error initializing Supabase client: {e}")
+        sys.exit(1)
+
+# Initialize Supabase Client using the compatibility function
+supabase = initialize_supabase_client()
 
 def insert_and_get_id(table_name: str, data: Dict[str, Any], unique_column: str) -> Optional[int]:
     """
