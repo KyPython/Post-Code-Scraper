@@ -9,6 +9,8 @@ import smtplib
 
 # Import the actual scraper
 from scraper.geonames_scraper import scrape_geonames_postcodes
+# Import Supabase utilities
+from supabase_utils.db_client import get_all_postcodes, supabase
 
 app = Flask(__name__)
 
@@ -20,7 +22,53 @@ STATES = ["Connecticut", "New York", "California", "Texas", "Florida"]
 
 @app.route('/')
 def index():
-    return render_template('index.html', states=STATES)
+    # Get database stats to display on the homepage
+    db_stats = get_database_stats()
+    return render_template('index.html', states=STATES, db_stats=db_stats)
+
+def get_database_stats():
+    """Get statistics about the Supabase database for display"""
+    try:
+        # Get total count of postcodes
+        postcodes = get_all_postcodes()
+        total_postcodes = len(postcodes)
+        
+        # Get recent entries (last 5)
+        recent_postcodes = postcodes[-5:] if total_postcodes > 0 else []
+        
+        # Format recent entries for display
+        recent_entries = []
+        for postcode in recent_postcodes:
+            recent_entries.append({
+                "Post-Code": postcode.get("code", ""),
+                "City/Town": postcode.get("place_name", "")
+            })
+        
+        # Get count by region if available
+        region_counts = {}
+        try:
+            response = supabase.table("regions").select("id,name").execute()
+            regions = {r['id']: r['name'] for r in response.data}
+            
+            for region_id, region_name in regions.items():
+                count_response = supabase.table("postcodes").select("id").eq("region_id", region_id).execute()
+                region_counts[region_name] = len(count_response.data)
+        except Exception as e:
+            print(f"Error getting region counts: {e}")
+        
+        return {
+            "total_postcodes": total_postcodes,
+            "recent_entries": recent_entries,
+            "region_counts": region_counts
+        }
+    except Exception as e:
+        print(f"Error getting database stats: {e}")
+        return {
+            "total_postcodes": 0,
+            "recent_entries": [],
+            "region_counts": {},
+            "error": str(e)
+        }
 
 @app.route('/scrape', methods=['POST'])
 def scrape_postcodes_route():
@@ -41,7 +89,8 @@ def scrape_postcodes_route():
         "results": [],
         "preview": [],
         "results_count": 0,
-        "message": None
+        "message": None,
+        "db_entries": 0  # Track how many entries were added to the database
     }
 
     # Start the scraper in a background thread
@@ -60,12 +109,12 @@ def run_scraper_thread(job_id, state, city):
         # Call the actual scraper function
         results_list = scrape_geonames_postcodes(state, city_filter=city)
         
-        # Format the results for our application
+        # Format the results for our application with renamed fields
         formatted_results = []
         for item in results_list:
             formatted_results.append({
-                "code": item.get("code", ""),
-                "place_name": item.get("place_name", "")
+                "Post-Code": item.get("code", ""),
+                "City/Town": item.get("place_name", "")
             })
         
         # Update the job with results
@@ -73,6 +122,14 @@ def run_scraper_thread(job_id, state, city):
         jobs[job_id]["results_count"] = len(formatted_results)
         jobs[job_id]["preview"] = formatted_results[:5]  # Get first 5 for preview
         jobs[job_id]["status"] = "completed"
+        
+        # Get the count of database entries after scraping
+        try:
+            postcodes = get_all_postcodes()
+            jobs[job_id]["db_entries"] = len(postcodes)
+        except Exception as e:
+            print(f"Error getting database count: {e}")
+        
         print(f"Job {job_id} completed. Found {len(formatted_results)} postcodes.")
 
     except Exception as e:
@@ -93,10 +150,20 @@ def get_job_status(job_id):
     if job["status"] == "completed":
         response_data["preview"] = job["preview"]
         response_data["results_count"] = job["results_count"]
+        response_data["db_entries"] = job.get("db_entries", 0)
+        
+        # Get fresh database stats
+        db_stats = get_database_stats()
+        response_data["db_stats"] = db_stats
     elif job["status"] == "failed":
         response_data["message"] = job["message"]
 
     return jsonify(response_data)
+
+@app.route('/database-stats')
+def database_stats_route():
+    """API endpoint to get current database statistics"""
+    return jsonify(get_database_stats())
 
 @app.route('/download/<job_id>')
 def download_results(job_id):
