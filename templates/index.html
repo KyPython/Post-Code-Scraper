@@ -4,186 +4,159 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Postcode Scraper</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simpledotcss@2.2.0/simple.min.css">
     <style>
-        body { padding-top: 20px; }
-        .container { max-width: 800px; }
-        #results-container { display: none; }
-        .spinner-border { width: 1rem; height: 1rem; }
+        /* body { font-family: sans-serif; margin: 20px; } */ /* Replaced by simple.css */
+        .job-status { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
+        .results-table { margin-top: 15px; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="mb-4">Postcode Scraper</h1>
-        
-        <div class="card mb-4">
-            <div class="card-header">Configure Scraper</div>
-            <div class="card-body">
-                <form id="scrape-form">
-                    <div class="mb-3">
-                        <label for="state" class="form-label">Select a state:</label>
-                        <select class="form-select" id="state" name="state">
-                            {% for state in states %}
-                            <option value="{{ state }}">{{ state }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="city" class="form-label">Filter by city (optional):</label>
-                        <input type="text" class="form-control" id="city" name="city">
-                    </div>
-                    <button type="submit" class="btn btn-primary" id="scrape-button">
-                        Start Scraping
-                    </button>
-                </form>
-            </div>
+    <h1>Postcode Scraper</h1>
+
+    <form id="scrape-form">
+        <label for="state">Select State:</label>
+        <select name="state" id="state">
+            {% for state in states %}
+                <option value="{{ state }}">{{ state }}</option>
+            {% endfor %}
+        </select>
+        <br><br>
+        <label for="city">Filter by City (Optional):</label>
+        <input type="text" name="city" id="city" placeholder="Enter city name (optional)">
+        <div style="margin-top: 10px;">
+            <button type="submit">Start Scraping</button>
         </div>
-        
-        <div id="status-container" class="alert alert-info d-none">
-            <div class="d-flex align-items-center">
-                <div class="spinner-border text-primary me-2" role="status" id="status-spinner"></div>
-                <span id="status-message">Scraping in progress...</span>
-            </div>
-        </div>
-        
-        <div id="results-container" class="card">
-            <div class="card-header">Results</div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <h5 id="results-count"></h5>
-                    <a href="#" class="btn btn-success d-none" id="download-button">Download CSV</a>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-striped" id="results-table">
-                        <thead>
-                            <tr>
-                                <th>Code</th>
-                                <th>Place Name</th>
-                                <th>Region ID</th>
-                            </tr>
-                        </thead>
-                        <tbody id="results-body"></tbody>
-                    </table>
-                </div>
-            </div>
+    </form>
+
+    <div id="status-area" class="job-status hidden">
+        <h2>Job Status</h2>
+        <p id="status-message">Waiting...</p>
+        <div id="results-area" class="results-table hidden">
+            <h3>Results Preview (First 5)</h3>
+            <table id="results-table">
+                <thead>
+                    <tr><th>Code</th><th>Place Name</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <a id="download-link" href="#" class="hidden">Download Full CSV</a>
         </div>
     </div>
-    
+
+    <hr>
+
+    <div id="request-info-area">
+        <h2>Request Full Access / More Information</h2>
+        <p>Interested in the full dataset or custom scraping features?</p>
+        <button id="request-info-button">Request More Info</button>
+        <p id="request-info-status" class="hidden"></p>
+    </div>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const scrapeForm = document.getElementById('scrape-form');
-            const scrapeButton = document.getElementById('scrape-button');
-            const statusContainer = document.getElementById('status-container');
-            const statusMessage = document.getElementById('status-message');
-            const statusSpinner = document.getElementById('status-spinner');
-            const resultsContainer = document.getElementById('results-container');
-            const resultsCount = document.getElementById('results-count');
-            const resultsBody = document.getElementById('results-body');
-            const downloadButton = document.getElementById('download-button');
-            
-            let currentJobId = null;
-            let pollingInterval = null;
-            
-            scrapeForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                
-                // Disable the form
-                scrapeButton.disabled = true;
-                
-                // Show status
-                statusContainer.classList.remove('d-none');
-                statusMessage.textContent = 'Starting scraper...';
-                
-                // Hide results
-                resultsContainer.style.display = 'none';
-                
-                // Get form data
-                const formData = new FormData(scrapeForm);
-                
-                // Send request
-                fetch('/scrape', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'started') {
-                        currentJobId = data.job_id;
-                        statusMessage.textContent = data.message;
-                        
-                        // Start polling for job status
-                        pollingInterval = setInterval(checkJobStatus, 1000);
-                    } else {
-                        showError('Failed to start scraping');
+        const form = document.getElementById('scrape-form');
+        const statusArea = document.getElementById('status-area');
+        const statusMessage = document.getElementById('status-message');
+        const resultsArea = document.getElementById('results-area');
+        const resultsTableBody = document.querySelector('#results-table tbody');
+        const downloadLink = document.getElementById('download-link');
+        const requestInfoButton = document.getElementById('request-info-button');
+        const requestInfoStatus = document.getElementById('request-info-status');
+
+        let currentJobId = null;
+        let intervalId = null;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            // Reset UI
+            statusArea.classList.remove('hidden');
+            resultsArea.classList.add('hidden');
+            resultsTableBody.innerHTML = ''; // Clear previous results
+            requestInfoStatus.classList.add('hidden');
+            requestInfoStatus.textContent = '';
+            downloadLink.classList.add('hidden');
+            statusMessage.textContent = 'Starting job...';
+
+            const formData = new FormData(form);
+            const response = await fetch('/scrape', { method: 'POST', body: formData });
+            const data = await response.json();
+
+            if (data.status === 'started') {
+                currentJobId = data.job_id;
+                statusMessage.textContent = `Job ${currentJobId} started. Checking status...`;
+                // Start polling
+                if (intervalId) clearInterval(intervalId); // Clear previous interval if any
+                intervalId = setInterval(checkJobStatus, 5000); // Check every 5 seconds
+            } else {
+                statusMessage.textContent = `Error starting job: ${data.message || 'Unknown error'}`;
+            }
+        });
+
+        async function checkJobStatus() {
+            if (!currentJobId) return;
+
+            try {
+                const response = await fetch(`/job/${currentJobId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                statusMessage.textContent = `Job ${currentJobId}: ${data.status}`;
+
+                if (data.status === 'completed') {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                    statusMessage.textContent = `Job ${currentJobId} completed! Processed ${data.results_count || 'N/A'} items.`;
+                    displayResults(data.preview || []); // Display preview data
+                    if (data.results_count > 0) {
+                        downloadLink.href = `/download/${currentJobId}`;
+                        downloadLink.classList.remove('hidden');
                     }
-                })
-                .catch(error => {
-                    showError('Error: ' + error.message);
-                });
-            });
-            
-            function checkJobStatus() {
-                if (!currentJobId) return;
-                
-                fetch(`/job/${currentJobId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'completed') {
-                            clearInterval(pollingInterval);
-                            showResults(data);
-                        } else if (data.status === 'error') {
-                            clearInterval(pollingInterval);
-                            showError('Error: ' + data.error);
-                        }
-                    })
-                    .catch(error => {
-                        clearInterval(pollingInterval);
-                        showError('Error checking job status: ' + error.message);
-                    });
+                } else if (data.status === 'failed') {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                    statusMessage.textContent = `Job ${currentJobId} failed: ${data.message || 'Unknown error'}`;
+                } else {
+                    // Still pending or running, continue polling
+                    statusMessage.textContent = `Job ${currentJobId}: ${data.status}...`;
+                }
+            } catch (error) {
+                console.error('Error checking job status:', error);
+                statusMessage.textContent = `Error checking status for job ${currentJobId}.`;
+                clearInterval(intervalId); // Stop polling on error
+                intervalId = null;
             }
-            
-            function showResults(data) {
-                // Update status
-                statusContainer.classList.add('alert-success');
-                statusContainer.classList.remove('alert-info');
-                statusSpinner.classList.add('d-none');
-                statusMessage.textContent = `Successfully scraped ${data.results.length} postcodes`;
-                
-                // Enable the form
-                scrapeButton.disabled = false;
-                
-                // Show results
-                resultsContainer.style.display = 'block';
-                resultsCount.textContent = `Found ${data.results.length} postcodes for ${data.state}`;
-                
-                // Clear previous results
-                resultsBody.innerHTML = '';
-                
-                // Add results to table
-                data.results.forEach(result => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${result.code}</td>
-                        <td>${result.place_name}</td>
-                        <td>${result.region_id}</td>
-                    `;
-                    resultsBody.appendChild(row);
+        }
+
+        function displayResults(previewData) {
+            resultsTableBody.innerHTML = ''; // Clear previous results
+            if (previewData && previewData.length > 0) {
+                previewData.forEach(item => {
+                    const row = resultsTableBody.insertRow();
+                    row.insertCell().textContent = item.code || 'N/A';
+                    row.insertCell().textContent = item.place_name || 'N/A';
                 });
-                
-                // Show download button
-                downloadButton.classList.remove('d-none');
-                downloadButton.href = `/download/${currentJobId}`;
+                resultsArea.classList.remove('hidden');
+            } else {
+                resultsArea.classList.add('hidden');
             }
-            
-            function showError(message) {
-                // Update status
-                statusContainer.classList.add('alert-danger');
-                statusContainer.classList.remove('alert-info');
-                statusSpinner.classList.add('d-none');
-                statusMessage.textContent = message;
-                
-                // Enable the form
-                scrapeButton.disabled = false;
+        }
+
+        requestInfoButton.addEventListener('click', async () => {
+            requestInfoStatus.classList.remove('hidden');
+            requestInfoStatus.textContent = 'Sending request...';
+            try {
+                const response = await fetch('/request-info', { method: 'POST' });
+                const data = await response.json();
+                if (response.ok && data.status === 'success') {
+                    requestInfoStatus.textContent = 'Request sent successfully! We will contact you soon.';
+                } else {
+                    throw new Error(data.message || 'Failed to send request.');
+                }
+            } catch (error) {
+                console.error('Error sending request info:', error);
+                requestInfoStatus.textContent = `Error: ${error.message}`;
             }
         });
     </script>
