@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Postcode Scraper</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding-top: 20px; }
+        .container { max-width: 800px; }
+        #results-container { display: none; }
+        .spinner-border { width: 1rem; height: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">Postcode Scraper</h1>
+        
+        <div class="card mb-4">
+            <div class="card-header">Configure Scraper</div>
+            <div class="card-body">
+                <form id="scrape-form">
+                    <div class="mb-3">
+                        <label for="state" class="form-label">Select a state:</label>
+                        <select class="form-select" id="state" name="state">
+                            {% for state in states %}
+                            <option value="{{ state }}">{{ state }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="city" class="form-label">Filter by city (optional):</label>
+                        <input type="text" class="form-control" id="city" name="city">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="scrape-button">
+                        Start Scraping
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div id="status-container" class="alert alert-info d-none">
+            <div class="d-flex align-items-center">
+                <div class="spinner-border text-primary me-2" role="status" id="status-spinner"></div>
+                <span id="status-message">Scraping in progress...</span>
+            </div>
+        </div>
+        
+        <div id="results-container" class="card">
+            <div class="card-header">Results</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h5 id="results-count"></h5>
+                    <a href="#" class="btn btn-success d-none" id="download-button">Download CSV</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="results-table">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Place Name</th>
+                                <th>Region ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const scrapeForm = document.getElementById('scrape-form');
+            const scrapeButton = document.getElementById('scrape-button');
+            const statusContainer = document.getElementById('status-container');
+            const statusMessage = document.getElementById('status-message');
+            const statusSpinner = document.getElementById('status-spinner');
+            const resultsContainer = document.getElementById('results-container');
+            const resultsCount = document.getElementById('results-count');
+            const resultsBody = document.getElementById('results-body');
+            const downloadButton = document.getElementById('download-button');
+            
+            let currentJobId = null;
+            let pollingInterval = null;
+            
+            scrapeForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Disable the form
+                scrapeButton.disabled = true;
+                
+                // Show status
+                statusContainer.classList.remove('d-none');
+                statusMessage.textContent = 'Starting scraper...';
+                
+                // Hide results
+                resultsContainer.style.display = 'none';
+                
+                // Get form data
+                const formData = new FormData(scrapeForm);
+                
+                // Send request
+                fetch('/scrape', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'started') {
+                        currentJobId = data.job_id;
+                        statusMessage.textContent = data.message;
+                        
+                        // Start polling for job status
+                        pollingInterval = setInterval(checkJobStatus, 1000);
+                    } else {
+                        showError('Failed to start scraping');
+                    }
+                })
+                .catch(error => {
+                    showError('Error: ' + error.message);
+                });
+            });
+            
+            function checkJobStatus() {
+                if (!currentJobId) return;
+                
+                fetch(`/job/${currentJobId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'completed') {
+                            clearInterval(pollingInterval);
+                            showResults(data);
+                        } else if (data.status === 'error') {
+                            clearInterval(pollingInterval);
+                            showError('Error: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        clearInterval(pollingInterval);
+                        showError('Error checking job status: ' + error.message);
+                    });
+            }
+            
+            function showResults(data) {
+                // Update status
+                statusContainer.classList.add('alert-success');
+                statusContainer.classList.remove('alert-info');
+                statusSpinner.classList.add('d-none');
+                statusMessage.textContent = `Successfully scraped ${data.results.length} postcodes`;
+                
+                // Enable the form
+                scrapeButton.disabled = false;
+                
+                // Show results
+                resultsContainer.style.display = 'block';
+                resultsCount.textContent = `Found ${data.results.length} postcodes for ${data.state}`;
+                
+                // Clear previous results
+                resultsBody.innerHTML = '';
+                
+                // Add results to table
+                data.results.forEach(result => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${result.code}</td>
+                        <td>${result.place_name}</td>
+                        <td>${result.region_id}</td>
+                    `;
+                    resultsBody.appendChild(row);
+                });
+                
+                // Show download button
+                downloadButton.classList.remove('d-none');
+                downloadButton.href = `/download/${currentJobId}`;
+            }
+            
+            function showError(message) {
+                // Update status
+                statusContainer.classList.add('alert-danger');
+                statusContainer.classList.remove('alert-info');
+                statusSpinner.classList.add('d-none');
+                statusMessage.textContent = message;
+                
+                // Enable the form
+                scrapeButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
