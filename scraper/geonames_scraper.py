@@ -81,6 +81,9 @@ def scrape_geonames_postcodes(state, city_filter=None):
         list: List of dictionaries with postcode data
     """
     try:
+        # Initialize results list
+        results = []
+        
         print("I'm initializing Playwright...")
         from playwright.sync_api import sync_playwright
         import subprocess
@@ -340,11 +343,17 @@ def fallback_scraper(state, city_filter=None):
         # Explicitly tell Playwright to use system-installed browsers (redundant here, but safe)
         print(f"Using fallback scraper for {state} {city_filter if city_filter else ''}")
         
-        # Format the state name for the URL
-        state_formatted = state.lower().replace(' ', '-')
+        # Get state details from map
+        state_details = STATE_MAP.get(state)
+        if not state_details:
+            print(f"Error: State '{state}' not found in STATE_MAP.")
+            return []
+        
+        state_abbr = state_details["abbr"]
+        state_slug = state_details["slug"]
         
         # Create the URL
-        url = f"https://www.geonames.org/postal-codes/US/{state_formatted}.html"
+        url = f"https://www.geonames.org/postal-codes/US/{state_abbr}/{state_slug}.html"
         
         # Send a request to the URL
         headers = {
@@ -355,6 +364,12 @@ def fallback_scraper(state, city_filter=None):
         if response.status_code != 200:
             print(f"Failed to fetch data: Status code {response.status_code}")
             return []
+        
+        # Save the HTML for debugging
+        debug_dir = "debug_output"
+        os.makedirs(debug_dir, exist_ok=True)
+        with open(f"{debug_dir}/fallback_page_source.html", "w", encoding="utf-8") as f:
+            f.write(response.text)
         
         # Parse the HTML
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -371,9 +386,9 @@ def fallback_scraper(state, city_filter=None):
         
         for row in rows:
             cells = row.find_all('td')
-            if len(cells) >= 2:
-                place_name = cells[0].text.strip()
-                code = cells[1].text.strip()
+            if len(cells) >= 3:  # Ensure there are at least 3 columns
+                place_name = cells[1].text.strip() # Second column is the place name
+                postcode = cells[2].text.strip()   # Third column is the postal code
                 
                 # Apply city filter if provided
                 if city_filter and city_filter.lower() not in place_name.lower():
@@ -381,7 +396,7 @@ def fallback_scraper(state, city_filter=None):
                 
                 results.append({
                     'place_name': place_name,
-                    'code': code
+                    'code': postcode
                 })
         
         print(f"Fallback scraper found {len(results)} results")
@@ -389,6 +404,7 @@ def fallback_scraper(state, city_filter=None):
         
     except Exception as e:
         print(f"Fallback scraper error: {str(e)}")
+        import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return []
 
