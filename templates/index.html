@@ -41,6 +41,7 @@
                         <h4>Database Statistics</h4>
                         <p><strong>Total Postcodes:</strong> <span id="total-postcodes">{{ db_stats.total_postcodes }}</span></p>
                         
+                        <div class="region-counts">
                         {% if db_stats.region_counts %}
                         <h5>Postcodes by Region:</h5>
                         <ul>
@@ -49,11 +50,12 @@
                             {% endfor %}
                         </ul>
                         {% endif %}
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <h4>Recent Database Entries</h4>
-                        {% if db_stats.recent_entries %}
                         <div class="table-responsive">
+                        {% if db_stats.recent_entries %}
                             <table class="table table-striped table-sm">
                                 <thead>
                                     <tr>
@@ -70,10 +72,10 @@
                                     {% endfor %}
                                 </tbody>
                             </table>
-                        </div>
                         {% else %}
-                        <p>No recent entries found.</p>
+                            <p>No recent entries found.</p>
                         {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -157,12 +159,23 @@
                 if (data.status === 'completed') {
                     clearInterval(intervalId);
                     intervalId = null;
-                    statusMessage.textContent = `Job ${currentJobId} completed! Processed ${data.results_count || 'N/A'} items.`;
-                    displayResults(data.preview || []); // Display preview data
-                    if (data.results_count > 0) {
+                    
+                    // Ensure results_count is a number
+                    const resultsCount = typeof data.results_count === 'number' ? data.results_count : 0;
+                    
+                    statusMessage.textContent = `Job ${currentJobId} completed! Processed ${resultsCount} items.`;
+                    
+                    // Display preview data if available
+                    if (data.preview && Array.isArray(data.preview)) {
+                        displayResults(data.preview);
+                    }
+                    
+                    // Show download link if there are results
+                    if (resultsCount > 0) {
                         downloadLink.href = `/download/${currentJobId}`;
                         downloadLink.classList.remove('hidden');
                     }
+                    
                     // Update database stats if available
                     if (data.db_stats) {
                         updateDatabaseStats(data.db_stats);
@@ -185,15 +198,24 @@
 
         function displayResults(previewData) {
             resultsTableBody.innerHTML = ''; // Clear previous results
+            
             if (previewData && previewData.length > 0) {
                 previewData.forEach(item => {
                     const row = resultsTableBody.insertRow();
-                    row.insertCell().textContent = item.code || 'N/A';
-                    row.insertCell().textContent = item.place_name || 'N/A';
+                    const postCode = item['Post-Code'] || 'N/A';
+                    const cityTown = item['City/Town'] || 'N/A';
+                    
+                    row.insertCell().textContent = postCode;
+                    row.insertCell().textContent = cityTown;
                 });
                 resultsArea.classList.remove('hidden');
             } else {
-                resultsArea.classList.add('hidden');
+                // If no preview data, add a message row
+                const row = resultsTableBody.insertRow();
+                const cell = row.insertCell();
+                cell.colSpan = 2;
+                cell.textContent = 'No preview data available';
+                resultsArea.classList.remove('hidden');
             }
         }
 
@@ -201,7 +223,10 @@
             if (!stats) return;
             
             // Update total postcodes
-            document.getElementById('total-postcodes').textContent = stats.total_postcodes;
+            const totalPostcodesElement = document.getElementById('total-postcodes');
+            if (totalPostcodesElement) {
+                totalPostcodesElement.textContent = stats.total_postcodes;
+            }
             
             // Update recent entries table
             const recentEntriesTable = document.querySelector('.table-responsive');
@@ -219,8 +244,8 @@
                 stats.recent_entries.forEach(entry => {
                     tableHtml += `
                         <tr>
-                            <td>${entry['Post-Code']}</td>
-                            <td>${entry['City/Town']}</td>
+                            <td>${entry['Post-Code'] || 'N/A'}</td>
+                            <td>${entry['City/Town'] || 'N/A'}</td>
                         </tr>`;
                 });
                 
@@ -229,6 +254,19 @@
                     </table>`;
                 
                 recentEntriesTable.innerHTML = tableHtml;
+            }
+            
+            // Update region counts if available
+            const regionCountsElement = document.querySelector('.region-counts');
+            if (regionCountsElement && stats.region_counts) {
+                let regionHtml = '<h5>Postcodes by Region:</h5><ul>';
+                
+                for (const [region, count] of Object.entries(stats.region_counts)) {
+                    regionHtml += `<li><strong>${region}:</strong> ${count}</li>`;
+                }
+                
+                regionHtml += '</ul>';
+                regionCountsElement.innerHTML = regionHtml;
             }
         }
 
