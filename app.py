@@ -7,6 +7,13 @@ import uuid
 from email.mime.text import MIMEText
 import smtplib
 import os
+import json
+import logging
+from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Import the actual scraper
 from scraper.geonames_scraper import scrape_geonames_postcodes
@@ -15,17 +22,159 @@ from supabase_utils.db_client import get_all_postcodes, supabase
 
 app = Flask(__name__)
 
-# Initialize the jobs dictionary
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize the jobs dictionary (temporary in-memory storage)
+# This will be replaced with Supabase storage
 jobs = {}
 
 # Define states for the dropdown
 STATES = ["Connecticut", "New York", "California", "Texas", "Florida"]
 
+def get_available_states():
+    """Get list of states/regions from the database"""
+    try:
+        # Try to get regions from Supabase
+        response = supabase.table("regions").select("name").execute()
+        
+        if response.data:
+            # Extract region names and sort them
+            states = sorted([region.get("name") for region in response.data])
+            logger.info(f"Retrieved {len(states)} states from database")
+            return states
+        else:
+            logger.warning("No regions found in database, using default states list")
+            return STATES
+    except Exception as e:
+        logger.error(f"Error retrieving states from database: {e}")
+        return STATES  # Fall back to hardcoded list
+
+# Function to create jobs table in Supabase if it doesn't exist
+def ensure_jobs_table_exists():
+    try:
+        # Check if jobs table exists by attempting to query it
+        response = supabase.table("jobs").select("id").limit(1).execute()
+        logger.info("Jobs table exists in Supabase")
+        return True
+    except Exception as e:
+        if "relation" in str(e) and "does not exist" in str(e):
+            logger.info("Creating jobs table in Supabase")
+            try:
+                # Create the jobs table
+                # Note: This is a simplified approach - in production you might want to use migrations
+                sql = """
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id UUID PRIMARY KEY,
+                    status VARCHAR(50) NOT NULL,
+                    state VARCHAR(100) NOT NULL,
+                    city VARCHAR(100),
+                    results JSONB,
+                    preview JSONB,
+                    results_count INTEGER DEFAULT 0,
+                    message TEXT,
+                    db_entries INTEGER DEFAULT 0,
+                    error_details TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+                """
+                supabase.rpc("exec_sql", {"query": sql}).execute()
+                logger.info("Jobs table created successfully")
+                return True
+            except Exception as create_error:
+                logger.error(f"Failed to create jobs table: {create_error}")
+                return False
+        else:
+            logger.error(f"Error checking jobs table: {e}")
+            return False
+
+# Function to save job to Supabase
+def save_job_to_supabase(job_id, job_data):
+    try:
+        # Convert job data to a format suitable for Supabase
+        supabase_job = {
+            "id": job_id,
+            "status": job_data.get("status", "unknown"),
+            "state": job_data.get("state", ""),
+            "city": job_data.get("city", None),
+            "results": json.dumps(job_data.get("results", [])),
+            "preview": json.dumps(job_data.get("preview", [])),
+            "results_count": job_data.get("results_count", 0),
+            "message": job_data.get("message", None),
+            "db_entries": job_data.get("db_entries", 0),
+            "error_details": job_data.get("error_details", None),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Check if job already exists
+        response = supabase.table("jobs").select("id").eq("id", job_id).execute()
+        
+        if response.data:
+            # Update existing job
+            supabase.table("jobs").update(supabase_job).eq("id", job_id).execute()
+            logger.info(f"Updated job {job_id} in Supabase")
+        else:
+            # Insert new job
+            supabase_job["created_at"] = datetime.now().isoformat()
+            supabase.table("jobs").insert(supabase_job).execute()
+            logger.info(f"Inserted job {job_id} into Supabase")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save job to Supabase: {e}")
+        return False
+
+# Function to get job from Supabase
+def get_job_from_supabase(job_id):
+    try:
+        response = supabase.table("jobs").select("*").eq("id", job_id).execute()
+        
+        if not response.data:
+            return None
+        
+        job_data = response.data[0]
+        
+        # Convert JSON strings back to Python objects
+        if isinstance(job_data.get("results"), str):
+            job_data["results"] = json.loads(job_data.get("results", "[]"))
+        
+        if isinstance(job_data.get("preview"), str):
+            job_data["preview"] = json.loads(job_data.get("preview", "[]"))
+        
+        return job_data
+    except Exception as e:
+        logger.error(f"Failed to get job from Supabase: {e}")
+        return None
+
+@app.before_first_request
+def setup():
+    """Initialize application components before the first request"""
+    # Ensure the jobs table exists
+    ensure_jobs_table_exists()
+    
+    # Check email configuration
+    email_password = os.environ.get("EMAIL_PASSWORD", "")
+    if not email_password:
+        logger.warning("EMAIL_PASSWORD environment variable is not set.")
+        logger.warning("Email functionality will not work without valid credentials.")
+    
+    # Check Supabase configuration
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_KEY", "")
+    if not supabase_url or not supabase_key:
+        logger.warning("SUPABASE_URL or SUPABASE_KEY environment variables are not set.")
+        logger.warning("Database functionality may not work properly.")
+
 @app.route('/')
 def index():
     # Get database stats to display on the homepage
     db_stats = get_database_stats()
-    return render_template('index.html', states=STATES, db_stats=db_stats)
+    return render_template('index.html', states=get_available_states(), db_stats=db_stats)
 
 def get_database_stats():
     """Get statistics about the Supabase database for display"""
@@ -83,7 +232,7 @@ def scrape_postcodes_route():
     job_id = str(uuid.uuid4())
     
     # Initialize job data
-    jobs[job_id] = {
+    job_data = {
         "status": "pending",
         "state": state,
         "city": city,
@@ -93,6 +242,12 @@ def scrape_postcodes_route():
         "message": None,
         "db_entries": 0  # Track how many entries were added to the database
     }
+    
+    # Store in memory temporarily
+    jobs[job_id] = job_data
+    
+    # Save to Supabase
+    save_job_to_supabase(job_id, job_data)
 
     # Start the scraper in a background thread
     thread = threading.Thread(target=run_scraper_thread, args=(job_id, state, city))
@@ -104,20 +259,23 @@ def scrape_postcodes_route():
 def run_scraper_thread(job_id, state, city):
     """Runs the scraper and updates the job dictionary."""
     try:
+        # Update job status to running
         jobs[job_id]["status"] = "running"
-        print(f"Starting scraper for Job ID: {job_id}, State: {state}, City: {city}")
+        save_job_to_supabase(job_id, jobs[job_id])
+        
+        logger.info(f"Starting scraper for Job ID: {job_id}, State: {state}, City: {city}")
         
         # Call the actual scraper function
         results_list = scrape_geonames_postcodes(state, city_filter=city)
         
         # Check if results_list is None or empty and provide detailed logging
         if results_list is None:
-            print(f"Warning: scraper returned None for state: {state}, city: {city}")
+            logger.warning(f"Scraper returned None for state: {state}, city: {city}")
             results_list = []
         elif len(results_list) == 0:
-            print(f"Warning: scraper returned empty list for state: {state}, city: {city}")
+            logger.warning(f"Scraper returned empty list for state: {state}, city: {city}")
         else:
-            print(f"Scraper returned {len(results_list)} results for state: {state}, city: {city}")
+            logger.info(f"Scraper returned {len(results_list)} results for state: {state}, city: {city}")
         
         # Format the results for our application with renamed fields
         formatted_results = []
@@ -126,37 +284,56 @@ def run_scraper_thread(job_id, state, city):
                 "Post-Code": item.get("code", ""),
                 "City/Town": item.get("place_name", "")
             }
-            print(f"Processing result: {formatted_result}")
             formatted_results.append(formatted_result)
         
         # Update the job with results
         jobs[job_id]["results"] = formatted_results
         jobs[job_id]["results_count"] = len(formatted_results)
         jobs[job_id]["preview"] = formatted_results[:5] if formatted_results else []
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["message"] = f"Found {len(formatted_results)} postcodes for {state}" + (f" ({city})" if city else "")
+        
+        if len(formatted_results) > 0:
+            jobs[job_id]["status"] = "completed"
+            jobs[job_id]["message"] = f"Found {len(formatted_results)} postcodes for {state}" + (f" ({city})" if city else "")
+        else:
+            jobs[job_id]["status"] = "completed"
+            jobs[job_id]["message"] = f"No postcodes found for {state}" + (f" ({city})" if city else "")
         
         # Get the count of database entries after scraping
         try:
             postcodes = get_all_postcodes()
             jobs[job_id]["db_entries"] = len(postcodes)
         except Exception as e:
-            print(f"Error getting database count: {e}")
+            logger.error(f"Error getting database count: {e}")
             jobs[job_id]["db_entries"] = 0
         
-        print(f"Job {job_id} completed. Found {len(formatted_results)} postcodes.")
+        # Save updated job to Supabase
+        save_job_to_supabase(job_id, jobs[job_id])
+        
+        logger.info(f"Job {job_id} completed. Found {len(formatted_results)} postcodes.")
 
     except Exception as e:
-        print(f"Job {job_id} failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Job {job_id} failed: {e}", exc_info=True)
+        
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["message"] = str(e)
         jobs[job_id]["error_details"] = traceback.format_exc()
+        
+        # Save failed job to Supabase
+        save_job_to_supabase(job_id, jobs[job_id])
 
 @app.route('/job/<job_id>', methods=['GET'])
 def get_job_status(job_id):
+    # Try to get job from memory first
     job = jobs.get(job_id)
+    
+    # If not in memory, try to get from Supabase
+    if not job:
+        job = get_job_from_supabase(job_id)
+        
+        # If found in Supabase, cache in memory
+        if job:
+            jobs[job_id] = job
+    
     if not job:
         return jsonify({"status": "error", "message": "Job not found"}), 404
 
@@ -167,13 +344,14 @@ def get_job_status(job_id):
         response_data["preview"] = job["preview"] or []
         response_data["results_count"] = job["results_count"]
         response_data["db_entries"] = job.get("db_entries", 0)
+        response_data["message"] = job.get("message", "")
         
         # Get fresh database stats
         try:
             db_stats = get_database_stats()
             response_data["db_stats"] = db_stats
         except Exception as e:
-            print(f"Error getting database stats: {e}")
+            logger.error(f"Error getting database stats: {e}")
             response_data["db_stats_error"] = str(e)
             
     elif job["status"] == "failed":
@@ -191,7 +369,13 @@ def database_stats_route():
 
 @app.route('/download/<job_id>')
 def download_results(job_id):
+    # Try to get job from memory first
     job = jobs.get(job_id)
+    
+    # If not in memory, try to get from Supabase
+    if not job:
+        job = get_job_from_supabase(job_id)
+    
     if not job or job['status'] != 'completed':
         return "Job not found or not completed", 404
     
@@ -220,12 +404,17 @@ def download_results(job_id):
 
 @app.route('/request-info', methods=['POST'])
 def request_info():
-    # Email Configuration
-    sender_email = "your_app_email@example.com"
-    sender_password = "your_app_password"
-    receiver_email = "kyjahntsmith@gmail.com"
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
+    # Email Configuration - Get from environment variables with fallbacks
+    sender_email = os.environ.get("EMAIL_SENDER", "")
+    sender_password = os.environ.get("EMAIL_PASSWORD", "")
+    receiver_email = os.environ.get("EMAIL_RECEIVER", "kyjahntsmith@gmail.com")
+    smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+
+    # Check if credentials are set
+    if not sender_email or not sender_password:
+        logger.error("Email credentials not configured")
+        return jsonify({"status": "error", "message": "Email credentials not configured"}), 500
 
     # Get form data if available
     name = request.form.get('name', 'Anonymous')
@@ -250,22 +439,32 @@ def request_info():
     msg['To'] = receiver_email
 
     try:
-        import smtplib
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
             server.login(sender_email, sender_password)
             server.sendmail(sender_email, receiver_email, msg.as_string())
-        print("Info request email sent successfully.")
+        logger.info("Info request email sent successfully")
         return jsonify({"status": "success", "message": "Request sent"})
     except Exception as e:
-        print(f"Failed to send email: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Failed to send email: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to send request"}), 500
 
 @app.route('/debug-scraper', methods=['GET'])
 def debug_scraper():
-    """Debug endpoint to test the scraper directly"""
+    """Debug endpoint to test the scraper directly - protected in production"""
+    # Check if we're in development mode
+    is_development = os.environ.get('FLASK_ENV') == 'development' or app.debug
+    
+    # Check for debug API key if in production
+    api_key = request.args.get('api_key')
+    debug_api_key = os.environ.get('DEBUG_API_KEY')
+    
+    if not is_development and (not api_key or api_key != debug_api_key):
+        return jsonify({
+            "status": "error",
+            "message": "This endpoint is only available in development mode or with a valid API key"
+        }), 403
+    
     state = request.args.get('state', 'Connecticut')
     city = request.args.get('city', None)
     
@@ -273,29 +472,47 @@ def debug_scraper():
         # Call the scraper directly
         results = scrape_geonames_postcodes(state, city_filter=city)
         
-        # Return detailed information
-        return jsonify({
-            "status": "success",
-            "state": state,
-            "city": city,
-            "results_count": len(results) if results else 0,
-            "results": results[:10] if results else [],  # Return first 10 results
-            "is_none": results is None,
-            "type": str(type(results)),
-            "scraper_info": {
-                "module": scrape_geonames_postcodes.__module__,
-                "function": scrape_geonames_postcodes.__name__
-            }
-        })
+        # Return limited information in production
+        if is_development:
+            # Return detailed information in development
+            return jsonify({
+                "status": "success",
+                "state": state,
+                "city": city,
+                "results_count": len(results) if results else 0,
+                "results": results[:10] if results else [],  # Return first 10 results
+                "is_none": results is None,
+                "type": str(type(results)),
+                "scraper_info": {
+                    "module": scrape_geonames_postcodes.__module__,
+                    "function": scrape_geonames_postcodes.__name__
+                }
+            })
+        else:
+            # Return limited information in production
+            return jsonify({
+                "status": "success",
+                "state": state,
+                "city": city,
+                "results_count": len(results) if results else 0,
+                "sample_results": [r.get("code", "") for r in results[:5]] if results else []
+            })
     except Exception as e:
-        import traceback
-        return jsonify({
-            "status": "error",
-            "state": state,
-            "city": city,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        if is_development:
+            import traceback
+            return jsonify({
+                "status": "error",
+                "state": state,
+                "city": city,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }), 500
+        else:
+            logger.error(f"Debug scraper error: {e}", exc_info=True)
+            return jsonify({
+                "status": "error",
+                "message": "An error occurred during scraping"
+            }), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
