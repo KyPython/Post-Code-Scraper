@@ -34,34 +34,6 @@ logger = logging.getLogger(__name__)
 # This will be replaced with Supabase storage
 jobs = {}
 
-# Define states for the dropdown
-STATES = ["Connecticut", "New York", "California", "Texas", "Florida"]
-
-# Run setup tasks at import time instead of using before_first_request
-def setup_app():
-    """Initialize application components"""
-    try:
-        # Ensure the jobs table exists
-        ensure_jobs_table_exists()
-        
-        # Check email configuration
-        email_password = os.environ.get("EMAIL_PASSWORD", "")
-        if not email_password:
-            logger.warning("EMAIL_PASSWORD environment variable is not set.")
-            logger.warning("Email functionality will not work without valid credentials.")
-        
-        # Check Supabase configuration
-        supabase_url = os.environ.get("SUPABASE_URL", "")
-        supabase_key = os.environ.get("SUPABASE_KEY", "")
-        if not supabase_url or not supabase_key:
-            logger.warning("SUPABASE_URL or SUPABASE_KEY environment variables are not set.")
-            logger.warning("Database functionality may not work properly.")
-    except Exception as e:
-        logger.error(f"Error during app initialization: {e}", exc_info=True)
-
-# Run setup at import time
-setup_app()
-
 # Function to create jobs table in Supabase if it doesn't exist
 def ensure_jobs_table_exists():
     try:
@@ -91,15 +63,46 @@ def ensure_jobs_table_exists():
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
                 """
-                supabase.rpc("exec_sql", {"query": sql}).execute()
-                logger.info("Jobs table created successfully")
-                return True
+                # Assuming you have an rpc function 'exec_sql' set up in Supabase
+                # If not, you'll need to handle table creation differently (e.g., manually or via migrations)
+                # supabase.rpc("exec_sql", {"query": sql}).execute()
+                logger.warning("Automatic table creation via RPC is commented out. Ensure 'jobs' table exists.")
+                # logger.info("Jobs table created successfully")
+                return True # Assume success if RPC is commented out, needs manual creation
             except Exception as create_error:
                 logger.error(f"Failed to create jobs table: {create_error}")
                 return False
         else:
             logger.error(f"Error checking jobs table: {e}")
             return False
+
+# Define states for the dropdown
+STATES = ["Connecticut", "New York", "California", "Texas", "Florida"]
+
+# Run setup tasks at import time instead of using before_first_request
+def setup_app():
+    """Initialize application components"""
+    try:
+        # Ensure the jobs table exists
+        ensure_jobs_table_exists()
+        
+        # Check email configuration
+        email_password = os.environ.get("EMAIL_PASSWORD", "")
+        if not email_password:
+            logger.warning("EMAIL_PASSWORD environment variable is not set.")
+            logger.warning("Email functionality will not work without valid credentials.")
+        
+        # Check Supabase configuration
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_KEY", "")
+        if not supabase_url or not supabase_key:
+            logger.warning("SUPABASE_URL or SUPABASE_KEY environment variables are not set.")
+            logger.warning("Database functionality may not work properly.")
+    except Exception as e:
+        logger.error(f"Error during app initialization: {e}", exc_info=True)
+
+# Run setup at import time
+setup_app()
 
 # Function to save job to Supabase
 def save_job_to_supabase(job_id, job_data):
@@ -158,6 +161,10 @@ def get_job_from_supabase(job_id):
     except Exception as e:
         logger.error(f"Failed to get job from Supabase: {e}")
         return None
+
+def get_available_states():
+    """Returns the list of states for the dropdown."""
+    return STATES # Return the hardcoded list for now
 
 @app.route('/')
 def index():
