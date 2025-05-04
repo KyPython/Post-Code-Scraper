@@ -76,8 +76,16 @@ def ensure_jobs_table_exists():
             logger.error(f"Error checking jobs table: {e}")
             return False
 
-# Define states for the dropdown
-STATES = ["Connecticut", "New York", "California", "Texas", "Florida"]
+# Define all US states for the dropdown
+STATES = [
+    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", 
+    "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", 
+    "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", 
+    "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", 
+    "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", 
+    "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", 
+    "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming"
+]
 
 # Run setup tasks at import time instead of using before_first_request
 def setup_app():

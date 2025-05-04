@@ -10,23 +10,51 @@
         .job-status { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
         .results-table { margin-top: 15px; }
         .hidden { display: none; }
+        .custom-select-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        
+        select#state {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ced4da;
+        }
+        
+        select#state option {
+            padding: 8px;
+        }
+        
+        /* Make the dropdown more mobile-friendly */
+        @media (max-width: 768px) {
+            .custom-select-wrapper {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
     <h1>Postcode Scraper</h1>
 
     <form id="scrape-form">
-        <label for="state">Select State:</label>
-        <select name="state" id="state">
-            {% for state in states %}
-                <option value="{{ state }}">{{ state }}</option>
-            {% endfor %}
-        </select>
-        <br><br>
-        <label for="city">Filter by City (Optional):</label>
-        <input type="text" name="city" id="city" placeholder="Enter city name (optional)">
-        <div style="margin-top: 10px;">
-            <button type="submit">Start Scraping</button>
+        <div class="form-group">
+            <label for="state">Select State:</label>
+            <select name="state" id="state" class="form-control">
+                <option value="">-- Select a State --</option>
+                {% for state in states %}
+                    <option value="{{ state }}">{{ state }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group mt-3">
+            <label for="city">Filter by City (Optional):</label>
+            <input type="text" name="city" id="city" class="form-control" placeholder="Enter city name (optional)">
+        </div>
+        
+        <div class="form-group mt-3">
+            <button type="submit" class="btn btn-primary">Start Scraping</button>
         </div>
     </form>
 
@@ -291,6 +319,43 @@
                 console.error('Error sending request info:', error);
                 requestInfoStatus.textContent = `Error: ${error.message}`;
             }
+        });
+
+        // Add a simple search filter to the state dropdown
+        document.addEventListener('DOMContentLoaded', function() {
+            const stateSelect = document.getElementById('state');
+            
+            // Create a wrapper div for the custom select
+            const wrapper = document.createElement('div');
+            wrapper.className = 'custom-select-wrapper';
+            stateSelect.parentNode.insertBefore(wrapper, stateSelect);
+            
+            // Create a search input
+            const searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.className = 'form-control mb-2';
+            searchInput.placeholder = 'Search states...';
+            wrapper.appendChild(searchInput);
+            
+            // Move the select into the wrapper
+            wrapper.appendChild(stateSelect);
+            
+            // Add event listener for the search input
+            searchInput.addEventListener('input', function() {
+                const filter = this.value.toLowerCase();
+                const options = stateSelect.options;
+                
+                for (let i = 0; i < options.length; i++) {
+                    const option = options[i];
+                    const txtValue = option.textContent || option.innerText;
+                    
+                    if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                        option.style.display = "";
+                    } else {
+                        option.style.display = "none";
+                    }
+                }
+            });
         });
     </script>
 </body>
