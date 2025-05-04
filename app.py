@@ -9,6 +9,7 @@ import smtplib
 import os
 import json
 import logging
+import traceback
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -36,23 +37,30 @@ jobs = {}
 # Define states for the dropdown
 STATES = ["Connecticut", "New York", "California", "Texas", "Florida"]
 
-def get_available_states():
-    """Get list of states/regions from the database"""
+# Run setup tasks at import time instead of using before_first_request
+def setup_app():
+    """Initialize application components"""
     try:
-        # Try to get regions from Supabase
-        response = supabase.table("regions").select("name").execute()
+        # Ensure the jobs table exists
+        ensure_jobs_table_exists()
         
-        if response.data:
-            # Extract region names and sort them
-            states = sorted([region.get("name") for region in response.data])
-            logger.info(f"Retrieved {len(states)} states from database")
-            return states
-        else:
-            logger.warning("No regions found in database, using default states list")
-            return STATES
+        # Check email configuration
+        email_password = os.environ.get("EMAIL_PASSWORD", "")
+        if not email_password:
+            logger.warning("EMAIL_PASSWORD environment variable is not set.")
+            logger.warning("Email functionality will not work without valid credentials.")
+        
+        # Check Supabase configuration
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_KEY", "")
+        if not supabase_url or not supabase_key:
+            logger.warning("SUPABASE_URL or SUPABASE_KEY environment variables are not set.")
+            logger.warning("Database functionality may not work properly.")
     except Exception as e:
-        logger.error(f"Error retrieving states from database: {e}")
-        return STATES  # Fall back to hardcoded list
+        logger.error(f"Error during app initialization: {e}", exc_info=True)
+
+# Run setup at import time
+setup_app()
 
 # Function to create jobs table in Supabase if it doesn't exist
 def ensure_jobs_table_exists():
@@ -150,25 +158,6 @@ def get_job_from_supabase(job_id):
     except Exception as e:
         logger.error(f"Failed to get job from Supabase: {e}")
         return None
-
-@app.before_first_request
-def setup():
-    """Initialize application components before the first request"""
-    # Ensure the jobs table exists
-    ensure_jobs_table_exists()
-    
-    # Check email configuration
-    email_password = os.environ.get("EMAIL_PASSWORD", "")
-    if not email_password:
-        logger.warning("EMAIL_PASSWORD environment variable is not set.")
-        logger.warning("Email functionality will not work without valid credentials.")
-    
-    # Check Supabase configuration
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_KEY", "")
-    if not supabase_url or not supabase_key:
-        logger.warning("SUPABASE_URL or SUPABASE_KEY environment variables are not set.")
-        logger.warning("Database functionality may not work properly.")
 
 @app.route('/')
 def index():
