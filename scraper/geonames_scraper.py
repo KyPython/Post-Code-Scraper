@@ -71,11 +71,11 @@ def find_postcode_table(html_content):
 
 def scrape_geonames_postcodes(state, city_filter=None):
     """
-    Scrape postcodes from geonames.org for a given state and optional city filter.
+    Scrape postal codes from geonames.org for a given US state
     
     Args:
-        state (str): The state to scrape postcodes for
-        city_filter (str, optional): Filter results to this city only
+        state (str): The state to scrape postal codes for
+        city_filter (str, optional): Filter results by city name
         
     Returns:
         list: List of dictionaries with postcode data
@@ -83,6 +83,23 @@ def scrape_geonames_postcodes(state, city_filter=None):
     try:
         print("I'm initializing Playwright...")
         from playwright.sync_api import sync_playwright
+        import subprocess
+        import sys
+        
+        # Check if we're in a cloud environment and install browsers if needed
+        if os.environ.get("CI") or os.environ.get("RENDER") or os.environ.get("DOCKER_CONTAINER"):
+            try:
+                print("Detected cloud environment, ensuring browsers are installed...")
+                # Install browsers directly using subprocess
+                subprocess.run(
+                    [sys.executable, "-m", "playwright", "install", "chromium"],
+                    check=True,
+                    capture_output=True
+                )
+                print("Successfully installed Chromium browser")
+            except subprocess.CalledProcessError as e:
+                print(f"Failed to install browsers: {e.stderr.decode()}")
+                print("Will attempt to use fallback method")
         
         # Initialize Playwright
         p = sync_playwright().start()
@@ -320,6 +337,7 @@ def fallback_scraper(state, city_filter=None):
         import requests
         from bs4 import BeautifulSoup
         
+        # Explicitly tell Playwright to use system-installed browsers (redundant here, but safe)
         print(f"Using fallback scraper for {state} {city_filter if city_filter else ''}")
         
         # Format the state name for the URL

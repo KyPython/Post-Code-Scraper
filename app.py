@@ -85,19 +85,6 @@ def setup_app():
     try:
         # Ensure the jobs table exists
         ensure_jobs_table_exists()
-        
-        # Check email configuration
-        email_password = os.environ.get("EMAIL_PASSWORD", "")
-        if not email_password:
-            logger.warning("EMAIL_PASSWORD environment variable is not set.")
-            logger.warning("Email functionality will not work without valid credentials.")
-        
-        # Check Supabase configuration
-        supabase_url = os.environ.get("SUPABASE_URL", "")
-        supabase_key = os.environ.get("SUPABASE_KEY", "")
-        if not supabase_url or not supabase_key:
-            logger.warning("SUPABASE_URL or SUPABASE_KEY environment variables are not set.")
-            logger.warning("Database functionality may not work properly.")
     except Exception as e:
         logger.error(f"Error during app initialization: {e}", exc_info=True)
 

@@ -40,8 +40,12 @@ A web application that demonstrates scraping postal codes from Connecticut, USA 
 1. Create a new Web Service on Render
 2. Connect your GitHub repository
 3. Use the following settings:
-   - Build Command: `pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium`
+   - Build Command: `pip install -r requirements.txt && python -m playwright install chromium && python -m playwright install-deps chromium`
    - Start Command: `gunicorn app:app`
+4. Add the following environment variables:
+   - `SUPABASE_URL`: https://hhwhhfgeczrwsekzrsdw.supabase.co
+   - `SUPABASE_KEY`: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhod2hoZmdlY3pyd3Nla3pyc2R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk5NzcyNjYsImV4cCI6MjA1NTU1MzI2Nn0.a0hu4XzA1v67h_A7sipLAP4QHc-7KmFfbeBPIaiGi50
+   - `RENDER`: `true` (to indicate we're running on Render)
 
 ### Deploy to Heroku
 
