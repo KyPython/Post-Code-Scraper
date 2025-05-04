@@ -1,6 +1,9 @@
+# /Users/ky/Desktop/GitHub/VS Code/cloud-postcode-scraper/Post-Code-Scraper/requirements.txt
 playwright==1.40.0
 beautifulsoup4==4.12.2
 supabase==1.0.3
 flask==2.3.3
 gunicorn==21.2.0
 pandas==2.2.0
+httpx
+python-dotenv==1.0.0

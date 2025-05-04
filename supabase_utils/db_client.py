@@ -37,28 +37,35 @@ def initialize_supabase_client():
     Initialize Supabase client with version compatibility handling.
     Returns the initialized client or exits on failure.
     """
+    # --- Debug: Print relevant environment variables ---
+    print("--- Checking Environment Variables ---")
+    print(f"HTTP_PROXY: {os.environ.get('HTTP_PROXY')}")
+    print(f"HTTPS_PROXY: {os.environ.get('HTTPS_PROXY')}")
+    print(f"ALL_PROXY: {os.environ.get('ALL_PROXY')}")
+    print("------------------------------------")
+
+    # --- Debug: Test httpx directly ---
+    print("--- Testing httpx connection ---")
     try:
-        # First try the standard initialization
+        import httpx
+        # Try connecting to the base Supabase URL or a known endpoint like auth
+        # Construct the auth v1 URL which is usually accessible
+        test_url = f"{SUPABASE_URL.replace('/rest/v1', '').rstrip('/')}/auth/v1"
+        print(f"Attempting GET request to: {test_url}")
+        with httpx.Client() as http_client:
+            response = http_client.get(test_url, timeout=15.0) # Increased timeout slightly
+            print(f"httpx GET request successful. Status code: {response.status_code}")
+    except Exception as http_err:
+        print(f"httpx direct connection failed: {http_err}")
+        print("This might indicate an underlying network/proxy/SSL issue.")
+    print("------------------------------")
+
+    # --- Attempt Initialization (Simplified) ---
+    try:
+        print("Attempting initialization with create_client...")
         client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("Supabase client initialized successfully.")
+        print("Supabase client initialized successfully using create_client.")
         return client
-    except TypeError as e:
-        if "unexpected keyword argument 'proxy'" in str(e):
-            print("Detected older Supabase client version, trying alternative initialization...")
-            try:
-                # For older versions that don't support proxy
-                import importlib
-                supabase_module = importlib.import_module('supabase')
-                client_class = getattr(supabase_module, 'Client')
-                client = client_class(SUPABASE_URL, SUPABASE_KEY)
-                print("Supabase client initialized with alternative method.")
-                return client
-            except Exception as alt_e:
-                print(f"Alternative initialization failed: {alt_e}")
-                sys.exit(1)
-        else:
-            print(f"TypeError initializing Supabase client: {e}")
-            sys.exit(1)
     except Exception as e:
         print(f"Error initializing Supabase client: {e}")
         sys.exit(1)

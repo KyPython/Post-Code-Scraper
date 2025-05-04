@@ -6,6 +6,7 @@ import io
 import uuid
 from email.mime.text import MIMEText
 import smtplib
+import os
 
 # Import the actual scraper
 from scraper.geonames_scraper import scrape_geonames_postcodes

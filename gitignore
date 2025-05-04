@@ -1,0 +1,16 @@
+# /Users/ky/Desktop/GitHub/VS Code/cloud-postcode-scraper/Post-Code-Scraper/.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+*.log
+debug_output/
+.DS_Store
+# Add any other files/folders you don't want in git
