@@ -122,22 +122,34 @@ def save_job_to_supabase(job_id, job_data):
             "updated_at": datetime.now().isoformat()
         }
         
+        # Try to create the table if it doesn't exist
+        try:
+            ensure_jobs_table_exists()
+        except Exception as table_error:
+            logger.error(f"Error ensuring jobs table exists: {table_error}")
+            # Continue anyway - we'll try the operation
+        
         # Check if job already exists
-        response = supabase.table("jobs").select("id").eq("id", job_id).execute()
-        
-        if response.data:
-            # Update existing job
-            supabase.table("jobs").update(supabase_job).eq("id", job_id).execute()
-            logger.info(f"Updated job {job_id} in Supabase")
-        else:
-            # Insert new job
-            supabase_job["created_at"] = datetime.now().isoformat()
-            supabase.table("jobs").insert(supabase_job).execute()
-            logger.info(f"Inserted job {job_id} into Supabase")
-        
-        return True
+        try:
+            response = supabase.table("jobs").select("id").eq("id", job_id).execute()
+            
+            if response.data:
+                # Update existing job
+                supabase.table("jobs").update(supabase_job).eq("id", job_id).execute()
+                logger.info(f"Updated job {job_id} in Supabase")
+            else:
+                # Insert new job
+                supabase_job["created_at"] = datetime.now().isoformat()
+                supabase.table("jobs").insert(supabase_job).execute()
+                logger.info(f"Inserted job {job_id} into Supabase")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save job to Supabase: {e}")
+            # If we get here, we'll fall back to in-memory storage only
+            return False
     except Exception as e:
-        logger.error(f"Failed to save job to Supabase: {e}")
+        logger.error(f"Failed to prepare job data for Supabase: {e}")
         return False
 
 # Function to get job from Supabase

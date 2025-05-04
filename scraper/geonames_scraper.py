@@ -69,223 +69,310 @@ def find_postcode_table(html_content):
     print("\nCould not find a suitable postcode table.")
     return None
 
-def scrape_geonames_postcodes(state_name: str, city_filter: str = None):
-    print("I'm initializing Playwright...")
+def scrape_geonames_postcodes(state, city_filter=None):
+    """
+    Scrape postcodes from geonames.org for a given state and optional city filter.
     
-    # Create a list to store results
-    results = []
-    
+    Args:
+        state (str): The state to scrape postcodes for
+        city_filter (str, optional): Filter results to this city only
+        
+    Returns:
+        list: List of dictionaries with postcode data
+    """
     try:
-        with sync_playwright() as p:
-            # I set browser launch options with a slower timeout and retry logic
-            launch_options = {
-                "headless": True,  # I changed this to True for better stability
-                "timeout": 60000,   # I increased the timeout to 60 seconds
+        print("I'm initializing Playwright...")
+        from playwright.sync_api import sync_playwright
+        
+        # Initialize Playwright
+        p = sync_playwright().start()
+        
+        # Set up browser launch options
+        launch_options = {
+            "headless": True,  # Run in headless mode
+        }
+        
+        # Try to detect if we're running in a CI/CD environment
+        if os.environ.get("CI") or os.environ.get("RENDER") or os.environ.get("DOCKER_CONTAINER"):
+            # Add CI-specific options
+            launch_options.update({
                 "args": [
                     "--no-sandbox",
+                    "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-extensions",
-                    "--disable-setuid-sandbox"  # I added this for better stability
+                    "--disable-accelerated-2d-canvas",
+                    "--no-first-run",
+                    "--no-zygote",
+                    "--single-process",
+                    "--disable-gpu"
                 ]
-            }
-            
-            # I try to launch the browser with retry logic
-            max_retries = 3
-            browser = None
-            for attempt in range(max_retries):
-                try:
-                    print(f"Attempting browser launch ({attempt + 1}/{max_retries})...")
-                    browser = p.chromium.launch(**launch_options)
-                    print("Browser launched successfully.")
-                    break
-                except Exception as e:
-                    print(f"Browser launch failed: {e}")
-                    if attempt < max_retries - 1:
-                        print("I'll retry in 5 seconds...")
-                        time.sleep(5)
-                    else:
-                        print("I've reached the maximum retries. I'll try Firefox instead...")
-                        try:
-                            browser = p.firefox.launch(**launch_options)
-                            print("Firefox browser launched successfully.")
-                            break
-                        except Exception as firefox_error:
-                            print(f"Firefox launch failed: {firefox_error}")
-                            print("I'll try Webkit as a last resort...")
-                            try:
-                                browser = p.webkit.launch(**launch_options)
-                                print("Webkit browser launched successfully.")
-                                break
-                            except Exception as webkit_error:
-                                print(f"Webkit launch failed: {webkit_error}")
-                                raise Exception("I couldn't launch any browser engines.")
-            
-            if not browser:
-                raise Exception("I failed to launch any browser.")
-                
-            # I create a context with retry logic
+            })
+        
+        # Try to launch browsers with multiple retries
+        browser = None
+        max_retries = 3
+        
+        # Try Chromium first
+        for attempt in range(1, max_retries + 1):
             try:
-                context = browser.new_context(
-                    viewport={"width": 1920, "height": 1080},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                )
-                page = context.new_page()
-                print("Browser context and page created successfully.")
+                print(f"Attempting browser launch ({attempt}/{max_retries})...")
+                browser = p.chromium.launch(**launch_options)
+                break
             except Exception as e:
-                print(f"Failed to create context or page: {e}")
-                if browser:
-                    browser.close()
-                raise
-            
-            # Get state details from map
-            state_details = STATE_MAP.get(state_name)
-            if not state_details:
-                print(f"Error: State '{state_name}' not found in STATE_MAP.")
-                browser.close()
-                return
-            
-            state_abbr = state_details["abbr"]
-            state_slug = state_details["slug"]
-            
-            # Construct URLs dynamically
-            urls = [
-                f"https://www.geonames.org/postal-codes/US/{state_abbr}/{state_slug}.html",
-                f"https://www.geonames.org/postal-codes/US/{state_abbr}/"
-            ]
-            
-            postal_table = None
-            for url in urls:
-                print(f"\nI'm trying the URL: {url}")
-                
-                try:
-                    # I navigate to the URL with retry logic
-                    for nav_attempt in range(3):
-                        try:
-                            page.goto(url, timeout=60000, wait_until="domcontentloaded")
-                            break
-                        except Exception as nav_error:
-                            print(f"Navigation attempt {nav_attempt + 1} failed: {nav_error}")
-                            if nav_attempt < 2: # Use '<' for correct retry count
-                                print("I'll retry navigation...")
-                                time.sleep(2)
-                            else:
-                                raise
-                    
-                    # I wait for the page to stabilize
-                    page.wait_for_load_state("networkidle", timeout=30000)
-                    
-                    # I print page info for debugging
-                    print(f"Page title: {page.title()}")
-                    print(f"Current URL: {page.url}")
-                    
-                    # I check for protection/captcha
-                    if check_for_protection(page): # Consider removing input for automated runs
-                        print("\nI detected a protection page. Please solve the captcha if present.")
-                        input("Press Enter once you've solved the captcha...")
-                        time.sleep(2)  # I wait after the captcha
-                    
-                    # I save the page source for debugging
-                    html_content = page.content()
-                    debug_dir = "debug_output"
-                    os.makedirs(debug_dir, exist_ok=True)
-                    with open(f"{debug_dir}/page_source_{urls.index(url)}.html", "w", encoding="utf-8") as f:
-                        f.write(html_content)
-                    print(f"Page source saved to '{debug_dir}/page_source_{urls.index(url)}.html'")
-                    
-                    # I take a screenshot for debugging
-                    page.screenshot(path=f"{debug_dir}/screenshot_{urls.index(url)}.png")
-                    print(f"Screenshot saved to '{debug_dir}/screenshot_{urls.index(url)}.png'")
-                    
-                    # I find the postal code table
-                    postal_table = find_postcode_table(html_content)
-                    if postal_table:
-                        break  # I exit the URL loop if I find the table
-                        
-                except Exception as e:
-                    print(f"Error processing URL {url}: {e}")
-                    continue
-            
-            if not postal_table:
-                print("\nI couldn't find the postal code table in any of the URLs.")
-                browser.close()
-                return
-                
-            print(f"\nPostcode table found for {state_name}. Processing data...")
-            
-            # I get or create the country using improved database functions
-            country_id = get_id_by_column("countries", "name", "USA")
-            if country_id is None:
-                print("I'm creating a USA country entry...")
-                country_id = insert_and_get_id("countries", {"name": "USA", "code": "US"}, "name")
-                if country_id is None:
-                    print("I failed to create the country entry. I'm aborting.")
-                    browser.close()
-                    return
-            
-            # I get or create the region
-            region_id = get_id_by_column("regions", "name", state_name, country_id=country_id)
-            if region_id is None:
-                print(f"Creating {state_name} region entry...")
-                region_id = insert_and_get_id("regions", {"name": state_name, "code": state_abbr, "country_id": country_id}, "name")
-                if region_id is None:
-                    print("Failed to create region entry. Aborting.")
-                    browser.close()
-                    return
-            
-            # I process the rows
-            rows = postal_table.find_all("tr")[1:]  # I skip the header
-            success_count = 0
-            error_count = 0
-            
-            for row in rows:
-                cols = row.find_all("td")
-                if len(cols) >= 3:  # I ensure there are at least 3 columns
-                    place_name = cols[1].text.strip() # Second column is the place name (e.g., "Avon")
-                    postcode = cols[2].text.strip()   # Third column is the postal code (e.g., "06001")
-
-                    # Apply city filter if provided
-                    if city_filter and city_filter.lower() not in place_name.lower():
-                        continue # Skip this row if city doesn't match
-
-                    if place_name and postcode:
-                        print(f"Processing: {place_name} - {postcode}")
-                        data = {
-                            "code": postcode,
-                            "place_name": place_name,
-                            "region_id": region_id,
-                        }
-                        
-                        # Add to results list
-                        results.append({
-                            "code": postcode,
-                            "place_name": place_name
-                        })
-                        
-                        if insert_postcode_data(data):
-                            success_count += 1
-                        else:
-                            error_count += 1
+                print(f"Browser launch failed: {str(e)}")
+                if attempt < max_retries:
+                    print(f"I'll retry in 5 seconds...")
+                    time.sleep(5)
                 else:
-                    print(f"Skipping row, expected 3+ columns, found {len(cols)}.")
-            
-            # --- This block should be OUTSIDE the loop ---
-            print(f"\nScraping completed for {state_name}" + (f" (City: {city_filter})" if city_filter else "") + ":")
-            print(f"Successfully processed/inserted: {success_count} postcodes.")
-            print(f"Errors encountered: {error_count} postcodes.")
-            print(f"Total results in list: {len(results)}")
-            
+                    print(f"I've reached the maximum retries. I'll try Firefox instead...")
+        
+        # If Chromium failed, try Firefox
+        if browser is None:
+            try:
+                browser = p.firefox.launch(**launch_options)
+            except Exception as e:
+                print(f"Firefox launch failed: {str(e)}")
+                print(f"I'll try Webkit as a last resort...")
+                try:
+                    browser = p.webkit.launch(**launch_options)
+                except Exception as e:
+                    print(f"Webkit launch failed: {str(e)}")
+                    # If all browser engines fail, try a fallback method
+                    print("All browser engines failed. Using fallback method...")
+                    return fallback_scraper(state, city_filter)
+        
+        # Create a context with retry logic
+        try:
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
+            print("Browser context and page created successfully.")
+        except Exception as e:
+            print(f"Failed to create context or page: {e}")
+            if browser:
+                browser.close()
+            raise
+        
+        # Get state details from map
+        state_details = STATE_MAP.get(state)
+        if not state_details:
+            print(f"Error: State '{state}' not found in STATE_MAP.")
             browser.close()
+            return
+        
+        state_abbr = state_details["abbr"]
+        state_slug = state_details["slug"]
+        
+        # Construct URLs dynamically
+        urls = [
+            f"https://www.geonames.org/postal-codes/US/{state_abbr}/{state_slug}.html",
+            f"https://www.geonames.org/postal-codes/US/{state_abbr}/"
+        ]
+        
+        postal_table = None
+        for url in urls:
+            print(f"\nI'm trying the URL: {url}")
             
-            # Return the results list
-            return results
+            try:
+                # I navigate to the URL with retry logic
+                for nav_attempt in range(3):
+                    try:
+                        page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                        break
+                    except Exception as nav_error:
+                        print(f"Navigation attempt {nav_attempt + 1} failed: {nav_error}")
+                        if nav_attempt < 2: # Use '<' for correct retry count
+                            print("I'll retry navigation...")
+                            time.sleep(2)
+                        else:
+                            raise
+                
+                # I wait for the page to stabilize
+                page.wait_for_load_state("networkidle", timeout=30000)
+                
+                # I print page info for debugging
+                print(f"Page title: {page.title()}")
+                print(f"Current URL: {page.url}")
+                
+                # I check for protection/captcha
+                if check_for_protection(page): # Consider removing input for automated runs
+                    print("\nI detected a protection page. Please solve the captcha if present.")
+                    input("Press Enter once you've solved the captcha...")
+                    time.sleep(2)  # I wait after the captcha
+                
+                # I save the page source for debugging
+                html_content = page.content()
+                debug_dir = "debug_output"
+                os.makedirs(debug_dir, exist_ok=True)
+                with open(f"{debug_dir}/page_source_{urls.index(url)}.html", "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                print(f"Page source saved to '{debug_dir}/page_source_{urls.index(url)}.html'")
+                
+                # I take a screenshot for debugging
+                page.screenshot(path=f"{debug_dir}/screenshot_{urls.index(url)}.png")
+                print(f"Screenshot saved to '{debug_dir}/screenshot_{urls.index(url)}.png'")
+                
+                # I find the postal code table
+                postal_table = find_postcode_table(html_content)
+                if postal_table:
+                    break  # I exit the URL loop if I find the table
+                    
+            except Exception as e:
+                print(f"Error processing URL {url}: {e}")
+                continue
+        
+        if not postal_table:
+            print("\nI couldn't find the postal code table in any of the URLs.")
+            browser.close()
+            return
             
+        print(f"\nPostcode table found for {state}. Processing data...")
+        
+        # I get or create the country using improved database functions
+        country_id = get_id_by_column("countries", "name", "USA")
+        if country_id is None:
+            print("I'm creating a USA country entry...")
+            country_id = insert_and_get_id("countries", {"name": "USA", "code": "US"}, "name")
+            if country_id is None:
+                print("I failed to create the country entry. I'm aborting.")
+                browser.close()
+                return
+        
+        # I get or create the region
+        region_id = get_id_by_column("regions", "name", state, country_id=country_id)
+        if region_id is None:
+            print(f"Creating {state} region entry...")
+            region_id = insert_and_get_id("regions", {"name": state, "code": state_abbr, "country_id": country_id}, "name")
+            if region_id is None:
+                print("Failed to create region entry. Aborting.")
+                browser.close()
+                return
+        
+        # I process the rows
+        rows = postal_table.find_all("tr")[1:]  # I skip the header
+        success_count = 0
+        error_count = 0
+        
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) >= 3:  # I ensure there are at least 3 columns
+                place_name = cols[1].text.strip() # Second column is the place name (e.g., "Avon")
+                postcode = cols[2].text.strip()   # Third column is the postal code (e.g., "06001")
+
+                # Apply city filter if provided
+                if city_filter and city_filter.lower() not in place_name.lower():
+                    continue # Skip this row if city doesn't match
+
+                if place_name and postcode:
+                    print(f"Processing: {place_name} - {postcode}")
+                    data = {
+                        "code": postcode,
+                        "place_name": place_name,
+                        "region_id": region_id,
+                    }
+                    
+                    # Add to results list
+                    results.append({
+                        "code": postcode,
+                        "place_name": place_name
+                    })
+                    
+                    if insert_postcode_data(data):
+                        success_count += 1
+                    else:
+                        error_count += 1
+            else:
+                print(f"Skipping row, expected 3+ columns, found {len(cols)}.")
+        
+        # --- This block should be OUTSIDE the loop ---
+        print(f"\nScraping completed for {state}" + (f" (City: {city_filter})" if city_filter else "") + ":")
+        print(f"Successfully processed/inserted: {success_count} postcodes.")
+        print(f"Errors encountered: {error_count} postcodes.")
+        print(f"Total results in list: {len(results)}")
+        
+        browser.close()
+        
+        # Return the results list
+        return results
+        
     except Exception as e:
         print(f"An error occurred during scraping: {str(e)}")
         print(f"Error type: {type(e)}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return []  # Return empty list on error
+
+def fallback_scraper(state, city_filter=None):
+    """
+    A fallback scraper that uses requests and BeautifulSoup instead of Playwright.
+    This is used when Playwright browsers are not available.
+    
+    Args:
+        state (str): The state to scrape postcodes for
+        city_filter (str, optional): Filter results to this city only
+        
+    Returns:
+        list: List of dictionaries with postcode data
+    """
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        print(f"Using fallback scraper for {state} {city_filter if city_filter else ''}")
+        
+        # Format the state name for the URL
+        state_formatted = state.lower().replace(' ', '-')
+        
+        # Create the URL
+        url = f"https://www.geonames.org/postal-codes/US/{state_formatted}.html"
+        
+        # Send a request to the URL
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code != 200:
+            print(f"Failed to fetch data: Status code {response.status_code}")
+            return []
+        
+        # Parse the HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Find the table with postal codes
+        table = soup.find('table', class_='restable')
+        if not table:
+            print("Could not find postal code table")
+            return []
+        
+        # Extract data from the table
+        results = []
+        rows = table.find_all('tr')[1:]  # Skip header row
+        
+        for row in rows:
+            cells = row.find_all('td')
+            if len(cells) >= 2:
+                place_name = cells[0].text.strip()
+                code = cells[1].text.strip()
+                
+                # Apply city filter if provided
+                if city_filter and city_filter.lower() not in place_name.lower():
+                    continue
+                
+                results.append({
+                    'place_name': place_name,
+                    'code': code
+                })
+        
+        print(f"Fallback scraper found {len(results)} results")
+        return results
+        
+    except Exception as e:
+        print(f"Fallback scraper error: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return []
 
 if __name__ == "__main__":
     print("--- GeoNames Postcode Scraper ---")

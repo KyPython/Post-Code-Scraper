@@ -40,7 +40,7 @@ A web application that demonstrates scraping postal codes from Connecticut, USA 
 1. Create a new Web Service on Render
 2. Connect your GitHub repository
 3. Use the following settings:
-   - Build Command: `pip install -r requirements.txt && python -m playwright install chromium && python -m playwright install-deps chromium`
+   - Build Command: `pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium`
    - Start Command: `gunicorn app:app`
 
 ### Deploy to Heroku
