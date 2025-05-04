@@ -163,7 +163,12 @@
                     // Ensure results_count is a number
                     const resultsCount = typeof data.results_count === 'number' ? data.results_count : 0;
                     
-                    statusMessage.textContent = `Job ${currentJobId} completed! Processed ${resultsCount} items.`;
+                    // Display a more informative message
+                    if (resultsCount > 0) {
+                        statusMessage.textContent = `Job ${currentJobId} completed! Found ${resultsCount} postcodes.`;
+                    } else {
+                        statusMessage.textContent = `Job ${currentJobId} completed! No postcodes found for the selected criteria.`;
+                    }
                     
                     // Display preview data if available
                     if (data.preview && Array.isArray(data.preview)) {
@@ -184,6 +189,7 @@
                     clearInterval(intervalId);
                     intervalId = null;
                     statusMessage.textContent = `Job ${currentJobId} failed: ${data.message || 'Unknown error'}`;
+                    console.error("Error details:", data.error_details);
                 } else {
                     // Still pending or running, continue polling
                     statusMessage.textContent = `Job ${currentJobId}: ${data.status}...`;
@@ -214,7 +220,7 @@
                 const row = resultsTableBody.insertRow();
                 const cell = row.insertCell();
                 cell.colSpan = 2;
-                cell.textContent = 'No preview data available';
+                cell.textContent = 'No postcodes found for the selected criteria';
                 resultsArea.classList.remove('hidden');
             }
         }

@@ -109,24 +109,31 @@ def run_scraper_thread(job_id, state, city):
         # Call the actual scraper function
         results_list = scrape_geonames_postcodes(state, city_filter=city)
         
-        # Check if results_list is None and provide a default empty list
+        # Check if results_list is None or empty and provide detailed logging
         if results_list is None:
-            print("Warning: scraper returned None instead of a list")
+            print(f"Warning: scraper returned None for state: {state}, city: {city}")
             results_list = []
+        elif len(results_list) == 0:
+            print(f"Warning: scraper returned empty list for state: {state}, city: {city}")
+        else:
+            print(f"Scraper returned {len(results_list)} results for state: {state}, city: {city}")
         
         # Format the results for our application with renamed fields
         formatted_results = []
         for item in results_list:
-            formatted_results.append({
+            formatted_result = {
                 "Post-Code": item.get("code", ""),
                 "City/Town": item.get("place_name", "")
-            })
+            }
+            print(f"Processing result: {formatted_result}")
+            formatted_results.append(formatted_result)
         
         # Update the job with results
         jobs[job_id]["results"] = formatted_results
         jobs[job_id]["results_count"] = len(formatted_results)
-        jobs[job_id]["preview"] = formatted_results[:5] if formatted_results else []  # Get first 5 for preview
+        jobs[job_id]["preview"] = formatted_results[:5] if formatted_results else []
         jobs[job_id]["status"] = "completed"
+        jobs[job_id]["message"] = f"Found {len(formatted_results)} postcodes for {state}" + (f" ({city})" if city else "")
         
         # Get the count of database entries after scraping
         try:
@@ -134,6 +141,7 @@ def run_scraper_thread(job_id, state, city):
             jobs[job_id]["db_entries"] = len(postcodes)
         except Exception as e:
             print(f"Error getting database count: {e}")
+            jobs[job_id]["db_entries"] = 0
         
         print(f"Job {job_id} completed. Found {len(formatted_results)} postcodes.")
 
@@ -143,6 +151,7 @@ def run_scraper_thread(job_id, state, city):
         traceback.print_exc()
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["message"] = str(e)
+        jobs[job_id]["error_details"] = traceback.format_exc()
 
 @app.route('/job/<job_id>', methods=['GET'])
 def get_job_status(job_id):
@@ -252,6 +261,40 @@ def request_info():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": "Failed to send request"}), 500
+
+@app.route('/debug-scraper', methods=['GET'])
+def debug_scraper():
+    """Debug endpoint to test the scraper directly"""
+    state = request.args.get('state', 'Connecticut')
+    city = request.args.get('city', None)
+    
+    try:
+        # Call the scraper directly
+        results = scrape_geonames_postcodes(state, city_filter=city)
+        
+        # Return detailed information
+        return jsonify({
+            "status": "success",
+            "state": state,
+            "city": city,
+            "results_count": len(results) if results else 0,
+            "results": results[:10] if results else [],  # Return first 10 results
+            "is_none": results is None,
+            "type": str(type(results)),
+            "scraper_info": {
+                "module": scrape_geonames_postcodes.__module__,
+                "function": scrape_geonames_postcodes.__name__
+            }
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "status": "error",
+            "state": state,
+            "city": city,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
