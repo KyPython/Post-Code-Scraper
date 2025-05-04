@@ -109,6 +109,11 @@ def run_scraper_thread(job_id, state, city):
         # Call the actual scraper function
         results_list = scrape_geonames_postcodes(state, city_filter=city)
         
+        # Check if results_list is None and provide a default empty list
+        if results_list is None:
+            print("Warning: scraper returned None instead of a list")
+            results_list = []
+        
         # Format the results for our application with renamed fields
         formatted_results = []
         for item in results_list:
@@ -120,7 +125,7 @@ def run_scraper_thread(job_id, state, city):
         # Update the job with results
         jobs[job_id]["results"] = formatted_results
         jobs[job_id]["results_count"] = len(formatted_results)
-        jobs[job_id]["preview"] = formatted_results[:5]  # Get first 5 for preview
+        jobs[job_id]["preview"] = formatted_results[:5] if formatted_results else []  # Get first 5 for preview
         jobs[job_id]["status"] = "completed"
         
         # Get the count of database entries after scraping
@@ -147,16 +152,25 @@ def get_job_status(job_id):
 
     # Return status and preview data if completed
     response_data = {"status": job["status"]}
+    
     if job["status"] == "completed":
-        response_data["preview"] = job["preview"]
+        response_data["preview"] = job["preview"] or []
         response_data["results_count"] = job["results_count"]
         response_data["db_entries"] = job.get("db_entries", 0)
         
         # Get fresh database stats
-        db_stats = get_database_stats()
-        response_data["db_stats"] = db_stats
+        try:
+            db_stats = get_database_stats()
+            response_data["db_stats"] = db_stats
+        except Exception as e:
+            print(f"Error getting database stats: {e}")
+            response_data["db_stats_error"] = str(e)
+            
     elif job["status"] == "failed":
         response_data["message"] = job["message"]
+        # Include more detailed error info if available
+        if "error_details" in job:
+            response_data["error_details"] = job["error_details"]
 
     return jsonify(response_data)
 
