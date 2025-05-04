@@ -72,6 +72,9 @@ def find_postcode_table(html_content):
 def scrape_geonames_postcodes(state_name: str, city_filter: str = None):
     print("I'm initializing Playwright...")
     
+    # Create a list to store results
+    results = []
+    
     try:
         with sync_playwright() as p:
             # I set browser launch options with a slower timeout and retry logic
@@ -238,23 +241,27 @@ def scrape_geonames_postcodes(state_name: str, city_filter: str = None):
             for row in rows:
                 cols = row.find_all("td")
                 if len(cols) >= 3:  # I ensure there are at least 3 columns
-                    # The actual table structure has index in col[0], place in col[1], code in col[2]
-                    # index = cols[0].text.strip()      # First column is the index number (optional to store)
                     place_name = cols[1].text.strip() # Second column is the place name (e.g., "Avon")
                     postcode = cols[2].text.strip()   # Third column is the postal code (e.g., "06001")
 
                     # Apply city filter if provided
                     if city_filter and city_filter.lower() not in place_name.lower():
-                        # print(f"Skipping {place_name} - does not match city filter '{city_filter}'") # Optional debug print
                         continue # Skip this row if city doesn't match
 
                     if place_name and postcode:
                         print(f"Processing: {place_name} - {postcode}")
-                        data = { # Corrected indentation
-                            "code": postcode,         # I put the postal code in the "code" field
-                            "place_name": place_name, # I put the place name in the "place_name" field
+                        data = {
+                            "code": postcode,
+                            "place_name": place_name,
                             "region_id": region_id,
                         }
+                        
+                        # Add to results list
+                        results.append({
+                            "code": postcode,
+                            "place_name": place_name
+                        })
+                        
                         if insert_postcode_data(data):
                             success_count += 1
                         else:
@@ -266,13 +273,19 @@ def scrape_geonames_postcodes(state_name: str, city_filter: str = None):
             print(f"\nScraping completed for {state_name}" + (f" (City: {city_filter})" if city_filter else "") + ":")
             print(f"Successfully processed/inserted: {success_count} postcodes.")
             print(f"Errors encountered: {error_count} postcodes.")
+            print(f"Total results in list: {len(results)}")
             
             browser.close()
+            
+            # Return the results list
+            return results
+            
     except Exception as e:
         print(f"An error occurred during scraping: {str(e)}")
         print(f"Error type: {type(e)}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
+        return []  # Return empty list on error
 
 if __name__ == "__main__":
     print("--- GeoNames Postcode Scraper ---")
